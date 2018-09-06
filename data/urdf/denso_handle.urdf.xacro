@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<robot name="denso_vs060" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find infinite_interaction)/data/urdf/denso_vs060_robot.urdf.xacro" />
+
+  <link name="handle">
+    <visual>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <geometry>
+	<sphere radius="0.03"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0" rpy="0 0 0"/>
+      <geometry>
+	<sphere radius="0.03"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+    </inertial>
+  </link>
+  <gazebo reference="handle">
+    <mu1>0.0</mu1>
+    <mu2>0.0</mu2>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <joint name="ft_joint" type="fixed">
+    <parent link="J6"/>
+    <child link="handle"/>
+    <origin xyz="0 0 0.07" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gazebo FT sensor plugin -->
+  <gazebo reference="ft_joint">
+    <disableFixedJointLumping>true</disableFixedJointLumping>
+    <provideFeedback>true</provideFeedback>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="ft_sensor_plugin" filename="libgazebo_ros_ft_sensor.so">
+      <updateRate>1000</updateRate>
+      <topicName>/netft/ft_sensor/raw</topicName>
+      <gaussianNoise>0.0</gaussianNoise>
+      <jointName>ft_joint</jointName>
+    </plugin>
+  </gazebo>
+</robot>
