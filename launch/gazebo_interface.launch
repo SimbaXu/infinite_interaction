@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <!-- This launch file can be used to launch an gazebo instance. -->
+<!-- Simply call this launch file with the default parameters. -->
 <launch>
 
   <arg name="robot_namespace"   default="denso" />
