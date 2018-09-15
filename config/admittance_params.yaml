@@ -1,0 +1,40 @@
+# tf stands for discrete-time transfer function
+admittance_control:
+  joint_pos_ref: [0, 0.571, 1, 0, 0, 0]
+  ft_sensor_ref: [0.0335615638904, 0.000475348964879, -0.980490947344, 0.00355118718085, 0.721720200271, 0.000654007338242]
+  j1:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+  j2:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+  j3:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+  j4:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+  j5:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+  j6:
+    tf_f2q_a: [0]
+    tf_f2q_b: [1, -0.9995]
+
+# note on coefficients
+# -------------------------------------
+# the continuous-time tf: 
+#        1
+# ---------------
+# s^2 + 0.5 s + 5
+#
+# is transformed to the discrete-time tf with sampling time Ts=8ms:
+#   3.196e-05 z + 3.191e-05
+#   -----------------------
+#    z^2 - 1.996 z + 0.996
+# -------------------------------------
+
+
+# the discrete time tf
+# 0 / (z - 0.999)
+# means a converging joint position, regardless of torque input.
