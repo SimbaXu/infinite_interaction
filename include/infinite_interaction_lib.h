@@ -141,7 +141,7 @@ class JointPositionHandler{
 public:
     JointPositionHandler();
     void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
-    dVector& get_latest_jnt_position();
+    dVector get_latest_jnt_position();
     bool received_msg();
 };
 
@@ -158,7 +158,7 @@ void JointPositionHandler::signal_callback(const sensor_msgs::JointStateConstPtr
     }
 }
 
-dVector &JointPositionHandler::get_latest_jnt_position() {
+dVector JointPositionHandler::get_latest_jnt_position() {
     return joint_position;
 }
 
@@ -201,6 +201,35 @@ void JointPositionController::set_joint_positions(std::vector<double>& jnt_posit
     }
 }
 
+
+class ExternalTorquePublisher {
+public:
+    explicit ExternalTorquePublisher(std::string name_space, ros::NodeHandle& nh);
+    void publish_joint_torques(std::vector<double>& taus);
+
+private:
+    std::string _name_space;
+    std::vector<ros::Publisher> _jnt_torque_pubs;
+    ros::NodeHandle _nh;
+};
+
+ExternalTorquePublisher::ExternalTorquePublisher(std::string name_space, ros::NodeHandle &nh): _name_space(name_space), _nh(nh)  {
+    for (int i=0; i < 6; i++){
+        std::string jnt_torque_topic = _name_space + "/tau" + std::to_string(i + 1);
+        ros::Publisher jnt_torque_pub = _nh.advertise<std_msgs::Float64>(jnt_torque_topic, 5);
+        _jnt_torque_pubs.push_back(jnt_torque_pub);
+    }
+}
+
+void ExternalTorquePublisher::publish_joint_torques(std::vector<double> &taus) {
+    for(int i=0; i < 6; i++){
+        std_msgs::Float64 msg;
+        msg.data = taus[i];
+        _jnt_torque_pubs[i].publish(msg);
+    }
+}
+
+
 void matrix_mult(std::vector<double> &A, std::vector<double> &x, std::vector<double> &y){
     unsigned int size_y = A.size() / x.size(), size_x = x.size();
     y.resize(size_y);
@@ -219,6 +248,18 @@ void matrix_add(std::vector<double> &x, std::vector<double> &y, std::vector<doub
     for (int i = 0; i < x.size(); ++i) {
         z[i] = x[i] + y[i];
     }
+}
+
+std::vector<double> mat_transpose(const std::vector<double>& M, int ncol){
+    assert(M.size() % ncol == 0);
+    std::vector<double> M_T (M.size());
+    int nrow = static_cast<int>(M.size() / ncol);
+    for(int i=0; i < nrow; i++){
+        for(int j=0; j < ncol; j++){
+            M_T[j * nrow + i] = M[i * ncol + j];
+        }
+    }
+    return M_T;
 }
 
 

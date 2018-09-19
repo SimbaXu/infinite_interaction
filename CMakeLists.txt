@@ -37,4 +37,13 @@ target_link_libraries(admittance_controller
 set_target_properties(admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-
+add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
+target_include_directories(sinuisoidal_motion_generator PUBLIC include)
+target_link_libraries(sinuisoidal_motion_generator
+  ${catkin_LIBRARIES}
+  # openrave depencidenc
+  ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
+  ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+  )
+set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
+set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")

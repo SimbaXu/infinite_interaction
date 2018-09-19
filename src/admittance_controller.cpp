@@ -33,11 +33,12 @@ int main(int argc, char **argv)
     ros::NodeHandle node_handle("~");
     // parameter
     std::string name_space = "denso";
-    std::string ft_sensor_topic = "/netft/ft_sensor/raw";
+    std::string ft_sensor_topic = "/netft/raw";
     std::string joint_state_topic = "/denso/joint_states";
     std::string scenefilename = "robots/denso_handle.robot.xml";
     std::string viewername = "qtosg";
     std::string robotname = "denso_handle";
+    std::string ftmanipname = "FTsensor";
     std::vector<double> wrench_ref;
     node_handle.getParam("ft_sensor_ref", wrench_ref);
     std::vector<double> position_ref;
@@ -77,14 +78,19 @@ int main(int argc, char **argv)
         DiscreteTimeFilter filter_(cof_a, cof_b, jnt_initial_pos);
         admittance_filters.push_back(filter_);
     }
+    // torque inputs
+    ExternalTorquePublisher torque_pub(name_space, node_handle);
+
     // openrave
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr penv = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
+
     boost::thread thviewer(boost::bind(SetViewer,penv,viewername));
     penv->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot;
     robot = penv->GetRobot(robotname);
+    robot->SetActiveManipulator(ftmanipname);
     auto manip = robot->GetActiveManipulator();
     ros::Rate rate(125);
     // temp variable
@@ -92,6 +98,8 @@ int main(int argc, char **argv)
     std::vector<double> wrench = {0, 0, 0, 0, 0, 0};
     std::vector<double> tau_prj(6), tau_prj1(6), tau_prj2(6), force(3), torque(3);
     std::vector<double> jacobian, jacobian_rot;
+    OpenRAVE::Transform T_wee;
+    int step_idx = 0;
     // controller
     while(!ros::isShuttingDown()){
         auto tstart = ros::Time::now();
@@ -99,39 +107,48 @@ int main(int argc, char **argv)
         ros::spinOnce();
         // retrieve the latest wrench measurement, offseted and filtered
         ft_handler.get_latest_wrench(force, torque);
+        OpenRAVE::RaveVector<double> rave_force(force[0], force[1], force[2]);
+        OpenRAVE::RaveVector<double> rave_torque(torque[0], torque[1], torque[2]);
 
         // project to joint torque space
         robot->SetActiveDOFValues(position_handler.get_latest_jnt_position());
         manip->CalculateJacobian(jacobian);
         manip->CalculateAngularVelocityJacobian(jacobian_rot);
+        T_wee = manip->GetEndEffectorTransform();
+        auto rave_force_ = T_wee.rotate(rave_force);
+        auto rave_torque_ = T_wee.rotate(rave_torque);
+        force[0] = rave_force_.x; force[1] = rave_force_.y; force[2] = rave_force_.z;
+        torque[0] = rave_torque_.x; torque[1] = rave_torque_.y; torque[2] = rave_torque_.z;
 
-        matrix_mult(jacobian, force, tau_prj1);
-        matrix_mult(jacobian_rot, torque, tau_prj2);
+        auto jacobian_T = mat_transpose(jacobian, 6);
+        auto jacobian_rot_T = mat_transpose(jacobian_rot, 6);
+        matrix_mult(jacobian_T, force, tau_prj1);
+        matrix_mult(jacobian_rot_T, torque, tau_prj2);
         matrix_add(tau_prj1, tau_prj2, tau_prj);
 
         // run through joint position filter
         for (int i = 0; i < 6; ++i) {
             double y_ = admittance_filters[i].compute(tau_prj[i]);
             position_cmd[i] = position_ref[i] + y_;
-            if (i==0){
-                ROS_DEBUG_STREAM("j0: y_=" << y_);
-            }
         }
         // send command
         position_act.set_joint_positions(position_cmd);
+        torque_pub.publish_joint_torques(tau_prj);
         // record time required
         auto tend = ros::Time::now();
         ros::Duration tdur = tend - tstart;
         // report, clean up then sleep
-        ROS_DEBUG_STREAM("force: " << force[0] << ", " << force[1] << ", " << force[2]);
-        ROS_DEBUG_STREAM("torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
-        ROS_DEBUG_STREAM("tau: " << tau_prj[0] << ","
-                                 << tau_prj[1] << ","
-                                 << tau_prj[2] << ","
-                                 << tau_prj[3] << ","
-                                 << tau_prj[4] << ","
-                                 << tau_prj[5]);
-        ROS_DEBUG_STREAM("comp time: " << tdur.toSec() * 1000 << "ms");
+        ROS_DEBUG_STREAM_THROTTLE(1, "force: " << force[0] << ", " << force[1] << ", " << force[2]);
+        ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
+        ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
+        // log data
+//        ROS_DEBUG_STREAM("tau: " << step_idx << ","
+//                                 << tau_prj[0] << "," << tau_prj[1] << "," << tau_prj[2] << ","
+//                                 << tau_prj[2] << "," << tau_prj[4] << "," << tau_prj[5]);
+//        ROS_DEBUG_STREAM("cmd: " << step_idx << ","
+//                                 << position_cmd[0] << "," << position_cmd[1] << "," << position_cmd[2] << ","
+//                                 << position_cmd[2] << "," << position_cmd[4] << "," << position_cmd[5]);
+        step_idx = (step_idx + 1) % 2147483640;
         rate.sleep();
     }
 

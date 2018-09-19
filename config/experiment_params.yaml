@@ -1,0 +1,5 @@
+sin_motion_generator:
+  joint_pos_ref: [0, 0.571, 1.0, 0, 0, 0]
+  ft_sensor_ref: [19.59, -21.48, 21.71, 0.969593, -1.054332, -0.552897]
+  accel_duration: 5
+  reach_duration: 3
