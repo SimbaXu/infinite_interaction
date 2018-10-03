@@ -47,8 +47,13 @@ int main(int argc, char **argv)
     double accel_duration, reach_duration;
     node_handle.getParam("accel_duration", accel_duration);
     if (!node_handle.getParam("reach_duration", reach_duration)){
-        ROS_ERROR_STREAM("No reach duration found! Use default value (5 seconds)");
+        ROS_ERROR_STREAM("No [reach_duration] found on parameter server! Use default value (5 seconds)");
         reach_duration = 5;
+    };
+    int cmd_rate;
+    if (!node_handle.getParam("cmd_rate", cmd_rate)){
+        ROS_ERROR_STREAM("No [cmd_rate] found on parameter server! Use default value (125 Hz)");
+        cmd_rate = 125;
     };
     if (wrench_ref.size() != 6){
         ROS_ERROR_STREAM("Reference wrench from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
@@ -88,7 +93,6 @@ int main(int argc, char **argv)
     robot = penv->GetRobot(robotname);
     robot->SetActiveManipulator(ftmanipname);
     auto manip = robot->GetActiveManipulator();
-    int cmd_rate = 125;
     ros::Rate rate(cmd_rate);
     // temp variable
     std::vector<double> position_cmd = {0, 0, 0, 0, 0, 0};

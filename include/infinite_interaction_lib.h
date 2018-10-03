@@ -1,5 +1,5 @@
 //
-// Created by hung on 8/9/18.
+// Created by Hung Pham on 8/9/18.
 //
 
 #ifndef PROJECT_INFINITE_INTERACTION_LIB_H
@@ -13,23 +13,27 @@
 
 typedef std::vector<double> dVector;
 
+/*! Discrete-time SISO filter.
+ *
+ * The filter is constructed by two arrays: the numeration and the denominator.
+ * In the following, x[n] is the input while y[n] is the output.
+ */
 class DiscreteTimeFilter {
-
     /*! Order of the filter. Is basically the order of the denominator. */
     int order;
     /*! Current index. */
-    int n;
+    int n, mem_sz;
     /*! The last (order)-th input and output is stored. All are default to some initial condition. */
     dVector x_mem, y_mem;
-    dVector cof_a, cof_b;
+    dVector b, a;
 public:
     /*! Initialize the filter.
         *
-        * \param cof_a_in numerator
-        * \param cof_b_in denominator
+        * \param b_in coefficients of the numerator
+        * \param a_in coefficients of the denominator
         * \param y_initial_val initial condition of the output. initial condition of input is default to zero.
         */
-    DiscreteTimeFilter(dVector &cof_a_in, dVector &cof_b_in, double y_initial_val=0);
+    DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val=0);
     /*! Compute the output in the next time step.
      *
      * ccde: a0 x[n] + a1 x[n-1] + ... a_o x[n-o]  = b0 y[n] + b1 y[n-1] + ... + b_o y[n - o]
@@ -40,31 +44,28 @@ public:
     double compute(double x_n);
 };
 
-DiscreteTimeFilter::DiscreteTimeFilter(dVector &cof_a_in, dVector &cof_b_in, double y_initial_val) {
+DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
     n = 0;
-    order = cof_b_in.size() - 1;
-    assert(order >= 0 and cof_b_in[0] > 0);
+    order = a_in.size() - 1;
+    mem_sz = order + 1;
+    assert(order >= 0); // at least a zeroth-order coefficient is expected
+    assert(a_in[0] > 0);  // first coefficient needs to be positive, this might not be necessary though.
 
-    x_mem.resize(order + 1);
-    y_mem.resize(order + 1);
-    for (int i = 0; i < order + 1; ++i) {
+    x_mem.resize(mem_sz);
+    y_mem.resize(mem_sz);
+    for (int i = 0; i < mem_sz; ++i) {
         x_mem[i] = 0;
         y_mem[i] = y_initial_val;
     }
 
-    // resize cof_a_in to a vector of size (order + 1) and shift it rightward
-    int order_a = cof_a_in.size() - 1;
-    cof_a_in.resize(order + 1);
-    for (int i=order; i >= 0; --i){
-        if (i - (order - order_a) >= 0){
-            cof_a_in[i] = cof_a_in[i - (order - order_a)];
-        }
-        else {
-            cof_a_in[i] = 0;
-        }
+    // resize b_in to a vector of size (order + 1) and shift it rightward
+    int size_a = b_in.size();
+    for (int i=size_a; i <= order; ++i){
+        b_in.push_back(0);
     }
-    cof_a = cof_a_in;
-    cof_b = cof_b_in;
+    b = b_in;
+    a = a_in;
+    assert(b.size() == a.size());
 }
 
 double DiscreteTimeFilter::compute(double x_n) {
@@ -73,27 +74,29 @@ double DiscreteTimeFilter::compute(double x_n) {
     x_mem[n % deg] = x_n;
     double sum = 0;
     for (int i = 0; i < deg; ++i) {
-        sum += cof_a[i] * x_mem[(n - i + deg) % deg];
+        sum += b[i] * x_mem[(n - i + deg) % deg];
     }
     for (int i = 1; i < deg; ++i){
-        sum -= cof_b[i] * y_mem[(n - i + deg) % deg];
+        sum -= a[i] * y_mem[(n - i + deg) % deg];
     }
-    y_mem[n % deg] = sum / cof_b[0];
+    y_mem[n % deg] = sum / a[0];
     return y_mem[n % deg];
 }
 
 
-/*! A class for handling FT signal stream.
+/*! FT signal stream handler.
  *
+ * A handler applies basic operations including collecting data and
+ * filter them using the DiscreteTimeFilter class.
  */
 class FTSensorHandler {
     double fx, fy, fz, tx, ty, tz;
     std::vector<double> wrench_offset;
+    std::vector<DiscreteTimeFilter> lp_filters;
 public:
     FTSensorHandler();;
     /*! Construct a FT Sensor Handler object.
      *
-     * abc
      */
     explicit FTSensorHandler(const std::vector<double> &wrench_offset_input);;
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);
@@ -134,6 +137,7 @@ FTSensorHandler::FTSensorHandler() : fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
     for (int i = 0; i < 6; ++i) {
         wrench_offset[i] = 0;
     }
+
 }
 
 class JointPositionHandler{
@@ -171,6 +175,9 @@ bool JointPositionHandler::received_msg() {
     return true;
 }
 
+/*! A controller used for controlling the robot joint position.
+ *
+ * */
 class JointPositionController {
 public:
     /*! Constructor for a joint position controller class.
@@ -261,7 +268,5 @@ std::vector<double> mat_transpose(const std::vector<double>& M, int ncol){
     }
     return M_T;
 }
-
-
 
 #endif //PROJECT_INFINITE_INTERACTION_LIB_H
