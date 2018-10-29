@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "admittance_control");
     ros::NodeHandle node_handle("~");
-    // parameter
+    // general parameters
     std::string name_space = "denso";
     std::string ft_sensor_topic = "/netft/raw";
     std::string joint_state_topic = "/denso/joint_states";
@@ -39,22 +39,30 @@ int main(int argc, char **argv)
     std::string viewername = "qtosg";
     std::string robotname = "denso_handle";
     std::string ftmanipname = "FTsensor";
-    std::vector<double> wrench_ref;
+
+    // FTsensor handler
+    std::vector<double> wrench_ref, FT_filter_b, FT_filter_a;
     node_handle.getParam("ft_sensor_ref", wrench_ref);
-    std::vector<double> position_ref;
-    node_handle.getParam("joint_pos_ref", position_ref);
     if (wrench_ref.size() != 6){
         ROS_ERROR_STREAM("Reference wrench from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
         exit(0);
     }
+    node_handle.getParam("ft_sensor_filters/b", FT_filter_b);
+    node_handle.getParam("ft_sensor_filters/a", FT_filter_a);
+    FTSensorHandler ft_handler(wrench_ref, FT_filter_b, FT_filter_a);
+    ros::Subscriber ft_sub = node_handle.subscribe(ft_sensor_topic, 3, &FTSensorHandler::signal_callback, &ft_handler);
+    bool FT_debug;
+    node_handle.param<bool>("debug", FT_debug, false);
+    if (FT_debug){
+        ft_handler.set_debug(node_handle);
+    }
+    // position handler
+    std::vector<double> position_ref;
+    node_handle.getParam("joint_pos_ref", position_ref);
     if (position_ref.size() != 6){
         ROS_ERROR_STREAM("Reference position from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
         exit(0);
     }
-    // FTsensor handler
-    FTSensorHandler ft_handler(wrench_ref);
-    ros::Subscriber ft_sub = node_handle.subscribe(ft_sensor_topic, 3, &FTSensorHandler::signal_callback, &ft_handler);
-    // position handler
     JointPositionHandler position_handler;
     ros::Subscriber position_handler_sub = node_handle.subscribe(joint_state_topic, 3, &JointPositionHandler::signal_callback, &position_handler);
     ros::Duration(0.5).sleep(); ros::spinOnce(); // update current joint position

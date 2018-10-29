@@ -8,6 +8,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Header.h>
 #include <sensor_msgs/JointState.h>
 #include <vector>
 
@@ -93,25 +94,33 @@ class FTSensorHandler {
     double fx, fy, fz, tx, ty, tz;
     std::vector<double> wrench_offset;
     std::vector<DiscreteTimeFilter> lp_filters;
+    dVector b, a; /*!filter coefficients*/
+    bool debug = false;
+    ros::Publisher wrench_pub_debug;  // publisher for debugging
 public:
     FTSensorHandler();;
-    /*! Construct a FT Sensor Handler object.
-     *
-     */
-    explicit FTSensorHandler(const std::vector<double> &wrench_offset_input);;
+    explicit FTSensorHandler(const dVector &wrench_offset_input);; // with non-zero offset values
+    FTSensorHandler(const dVector &wrench_offset_input, dVector b, dVector a); // with offset and low-pass filter
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);
-    void get_latest_wrench(std::vector<double> &force, std::vector<double> &torque);
-//    void set_filter(); not implemented
+    void get_latest_wrench(dVector &force, dVector &torque);
+    void set_debug(ros::NodeHandle &nh);
+    void log_latest_wrench(const std_msgs::Header &);
 };
 
+void FTSensorHandler::set_debug(ros::NodeHandle &nh) {
+    debug=true;
+    std::string topic_name = "debug/netft/filtered";
+    wrench_pub_debug = nh.advertise<geometry_msgs::WrenchStamped>(topic_name, 5);
+}
 
 void FTSensorHandler::signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg) {
-    fx = msg->wrench.force.x - wrench_offset[0];
-    fy = msg->wrench.force.y - wrench_offset[1];
-    fz = msg->wrench.force.z - wrench_offset[2];
-    tx = msg->wrench.torque.x - wrench_offset[3];
-    ty = msg->wrench.torque.y - wrench_offset[4];
-    tz = msg->wrench.torque.z - wrench_offset[5];
+    fx = lp_filters[0].compute(msg->wrench.force.x - wrench_offset[0]);
+    fy = lp_filters[1].compute(msg->wrench.force.y - wrench_offset[1]);
+    fz = lp_filters[2].compute(msg->wrench.force.z - wrench_offset[2]);
+    tx = lp_filters[3].compute(msg->wrench.torque.x - wrench_offset[3]);
+    ty = lp_filters[4].compute(msg->wrench.torque.y - wrench_offset[4]);
+    tz = lp_filters[5].compute(msg->wrench.torque.z - wrench_offset[5]);
+    log_latest_wrench(msg->header);
 }
 
 void FTSensorHandler::get_latest_wrench(std::vector<double> &force, std::vector<double> &torque) {
@@ -127,17 +136,46 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &force, std::vector<
 
 FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input) :  fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
     wrench_offset.resize(6);
+    b = {1};
+    a = {1};
     for (int i = 0; i < 6; ++i) {
         wrench_offset[i] = wrench_offset_input[i];
+        lp_filters.push_back(DiscreteTimeFilter(b, a, 0));  // set initial output to be the offset val
     }
 }
 
 FTSensorHandler::FTSensorHandler() : fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
     wrench_offset.resize(6);
+    b = {1};
+    a = {1};
     for (int i = 0; i < 6; ++i) {
         wrench_offset[i] = 0;
+        lp_filters.push_back(DiscreteTimeFilter(b, a, 0));
     }
+}
 
+FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in) {
+    b = b_in;
+    a = a_in;
+    wrench_offset.resize(6);
+    for (int i = 0; i < 6; ++i) {
+        wrench_offset[i] = wrench_offset_input[i];
+        lp_filters.push_back(DiscreteTimeFilter(b, a, 0));
+    }
+}
+
+void FTSensorHandler::log_latest_wrench(const std_msgs::Header &header) {
+    if (debug){
+        geometry_msgs::WrenchStamped msg;
+        msg.header = header;
+        msg.wrench.force.x = fx;
+        msg.wrench.force.y = fy;
+        msg.wrench.force.z = fz;
+        msg.wrench.torque.x = tx;
+        msg.wrench.torque.y = ty;
+        msg.wrench.torque.z = tz;
+        wrench_pub_debug.publish(msg);
+    }
 }
 
 class JointPositionHandler{
