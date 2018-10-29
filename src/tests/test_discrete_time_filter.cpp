@@ -6,7 +6,7 @@
 #include <infinite_interaction_lib.h>
 
 
-TEST(basic, case1){
+TEST(IIR, case1){
     dVector num {0}, den{1, -0.99};
     DiscreteTimeFilter filter (num, den, 10);
     double y;
@@ -17,7 +17,7 @@ TEST(basic, case1){
     EXPECT_NEAR(y, 9.9 * 0.99, 1e-3);
 }
 
-TEST(basic, case2){
+TEST(IIR, case2){
     // implement the filter y[n] - y[n-1] = x[n]
     dVector b{1}, a{1, -1};
     DiscreteTimeFilter filter (b, a, 0);
@@ -31,7 +31,7 @@ TEST(basic, case2){
 }
 
 
-TEST(basic, order_zero){
+TEST(IIR, order_zero){
     // implement the filter y[n] = -x[n]
     dVector b{-1}, a{1};
     DiscreteTimeFilter filter (b, a, 0);
