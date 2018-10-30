@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(infinite_interaction)
 
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -15,6 +16,7 @@ find_package(Boost ${OpenRAVE_Boost_VERSION} EXACT COMPONENTS iostreams python t
 if( CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX )
     add_definitions("-fno-strict-aliasing -Wall")
 endif( CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX )
+
 # end openrave dep
 
 if( Boost_INCLUDE_DIRS )
