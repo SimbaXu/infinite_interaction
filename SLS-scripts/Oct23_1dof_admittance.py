@@ -9,6 +9,19 @@ dT = 0.008
 s = co.tf([1, 0], [1])
 
 
+# define other controllers: design sometime ago
+A1 = co.c2d(co.tf([1], [1, 6, 5]), dT)
+Alp = co.c2d(1.0 / 5 / (0.3 * s + 1) / (0.5 * s + 1) * (0.032 * s + 1) * (0.0021 * s + 1), dT)
+Ainf = co.tf(
+    [0, 0.000234247581937, -0.001519129809213, 0.004117723048895, -0.005971926120458, 0.004887991561889, -0.002140996863836, 0.000392090600785],
+    [1.0, -7.692092610286219, 25.432665781511435, -46.858394653166798, 51.963159172009036, -34.686122493591625, 12.905678916635351, -2.064894113111176], dT)
+
+Ac14 = co.tf(
+    [0, 0.000780043976221,  -0.001879759125377, 0.001518988906942, -0.000411374804692, 0],
+    [1.0, -2.915259796026691, 2.835076504158775, -0.919776846642308, 0.000000000000039, 0],
+    dT)
+
+
 def plant(Larm=0.4):
     """Nominal Model as defined in Oct02_SISO_model.m
 
@@ -45,9 +58,13 @@ def plant(Larm=0.4):
     return P
 
 
-def analysis(plant, controller, Mp=1.05, Tr=0.9):
-    """ Analysis of closed-loop response.
+def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
+             internal_data=None):
+    """Analysis of closed-loop response.
 
+    Args:
+        internal_data: The internal responses {R, M, N, L, H} in that
+                       order. Or can be None.
     """
     H = Ss.lft(plant, controller)
     w, q = np.linalg.eig(H.A)
@@ -72,23 +89,55 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9):
     axs[0].plot(T_step, y_step[0, :], label='Hd(t)*u(t)')
     axs[0].plot(T_imp, y_imp [0, :], label='Hd(t)*delta(t)')
     axs[0].plot([0, Tr, Tr, 10], [0, 0, 0.98 * dss, 0.98 * dss], '--', c='gray')
-    axs[0].plot([0, 10], [Mp * dss, Mp * dss], '--', c='gray', label='dss={:.3f}'.format(dss))
+    axs[0].plot([0, 10], [Mp * dss, Mp * dss], '--', c='gray', label='dss={:.5f}'.format(dss))
     axs[0].legend()
+    axs[0].set_xlabel('Time(sec)')
+    axs[0].set_ylabel('y(m)')
 
-    # frequency response
-    magdb = 20 * np.log10(mag[0, 0])
-    axs[1].plot(freqs, magdb, label='H_dn(z)')
-    axs[1].plot([w_nyquist, w_nyquist], [np.min(magdb), np.max(magdb)], '--', c='red')
-    axs[1].plot([1e-2, 3.0, 30, 255], [-36, -36, -74, -130], 'x--', c='orange', label='1/wN')
+    # frequency responses
+    mag_yn = 20 * np.log10(mag[0, 0])
+    mag_T = 20 * np.log10(mag[1, 0])
+    # bounds on H_yn and H_T
+    freqs_bnd_yn = [1e-2, 3.0, 30, 255]
+    mag_bnd_yn = [-36, -36, -74, -130]  # db
+    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
+    mag_bnd_T = [-4, -4, -18, -14, -21, -34, -67]
+
+    if internal_data is not None:
+        T = internal_data[0].shape[0]
+    else:
+        T = 256
+    omegas = np.arange(int(T / 2)) * 2 * np.pi / T / 0.008
+    omegas[0] = 1e-2
+    wS_inv = np.ones(T) * 100  # infinity
+    wS_inv[:int(T / 2)] = np.power(10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
+    mag_wS = 20 * np.log10(wS_inv)
+    axs[1].scatter(omegas[:int(T / 2)], mag_wS[:int(T / 2)], label='1/wN', c='C2')
+
+    axs[1].plot(freqs, mag_yn, label='H_yn(z)', c='C0')
+    axs[1].plot(freqs, mag_T, label='T(z)', c='C1')
+    axs[1].plot([w_nyquist, w_nyquist], [np.min(mag_yn), np.max(mag_yn)], '--', c='red')
+    axs[1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='1/wN')
+    axs[1].plot(freqs_bnd_T, mag_bnd_T, 'x--', c='C1', label='1/wT')
     axs[1].set_xscale('log')
-    axs[1].set_ylabel('Mag(db)')
+    axs[1].set_ylabel('Mag(dB)')
     axs[1].set_xlabel('Freq(rad/s)')
     axs[1].legend()
 
+    fig.suptitle('Analysis plots: {:}'.format(controller_name))
     plt.show()
 
+    if internal_data is not None:
+        (Rval, Nval, Mval, Lval, Hval) = internal_data
+        T = Rval.shape[0]
+        T_Half = int(T / 2)
+        Rdft = np.fft.fft(Rval[:, 0, 0], axis=0)
+        plt.vlines(np.arange(T_Half) * 2 * np.pi / T, 0, np.abs(Rdft[:T_Half]))
+        plt.title('DFT{{R[0, 0]}} T={:d}'.format(T))
+        plt.show()
 
-def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9):
+
+def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
     """Synthesize a controller using SLS.
 
     Procedure p1
@@ -136,47 +185,67 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9):
                 R[n + 1] - R[n] * A - N[n] * C2 == np.eye(nx) * mult,
                 M[n + 1] - M[n] * A - L[n] * C2 == 0
             ])
-
     # closed-loop response: (1->2) mapping
-    H = []
+    H = cvx.Variable((T, 2))
     for n in range(T):
         if n == 0:
-            H.append(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21 + D11)
+            constraints.append(
+                H[n] == cvx.reshape(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21 + D11, (2,)))
         else:
-            H.append(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21)
+            constraints.append(
+                H[n] == cvx.reshape(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21, (2, )))
 
-    H00_conv = []
-    for n in range(T):
-        if n == 0:
-            H00_conv.append(H[n][0])
-        else:
-            H00_conv.append(H[n][0] + H00_conv[n - 1])
+    h2norm_T = cvx.sum_squares(H[:, 1])
+    h1norm_yf = cvx.sum(H[:, 0])
 
-    # constraints on step response
-    for n in range(T):
-        constraints.append(H00_conv[n] <= 0.615 * 1.01)
-        if n > int(Tr / dT):
-            constraints.append(H00_conv[n] >= 0.615 * 0.98)
-
-    h2norm = 0  # h2 norm
-    h1norm = 0
-    for n in range(T):
-        if n == 0:
-            h2norm += cvx.sum_squares(H[n])
-        else:
-            h2norm += cvx.sum_squares(H[n])
-        h1norm += H[n][0]
-
+    # constraint in time-domain, if specified.
     if const_steady > 0:
-        constraints.append(h1norm == const_steady)
+        upper = np.ones(T) * const_steady * 1.01
+        lower = np.ones(T) * (-0.5)
+        lower[int(Tr / dT):] = const_steady * 0.98
+        conv_mat = np.tril(np.ones((T, T)))
+        constraints.extend([
+            conv_mat * H[:, 0] <= upper,
+            conv_mat * H[:, 0] >= lower
+        ])
+        constraints.append(h1norm_yf == const_steady)
+        # desired impulse response
+        imp_desired = np.zeros(T)
+        imp_avg = const_steady / 100  # average length
+        for i in range(100):
+            imp_desired[i] = 2 * imp_avg - (2 * imp_avg / 100) * i
+        h2norm_yf = cvx.norm(H[:, 0] - imp_desired)
+    else:
+        h2norm_yf = cvx.norm(H[:, 0])
+    objective = h2norm_yf
+
+    # try some regularization
+    if regularization > 0:
+        # objective += regularization * (cvx.norm1(M) + cvx.norm1(N) + cvx.norm1(L) + cvx.norm1(R))
+        objective += regularization * (cvx.norm1(H))
+
+    # constraint in frequency-domain, if specified
+    Hz = Ss.dft_matrix(T) * H
+
+    # form upper bound for noise attenuation
+    freqs_bnd_yn = [1e-2, 3.0, 30, 255]  # rad
+    mag_bnd_yn = [-36, -36, -74, -130]  # db
+    omegas = np.arange(int(T / 2)) * 2 * np.pi / T / dT
+    omegas[0] = 1e-2
+    wS_inv = np.ones(T) * 100  # infinity
+    wS_inv[:int(T / 2)] = np.power(10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
+    constraints.append(cvx.abs(Hz[:, 0]) <= wS_inv)
+
+    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
+    mag_bnd_T = [-4, -4, -18, -14, -21, -34, -67]
 
     # optimize
-    obj = cvx.Minimize(h2norm)
+    obj = cvx.Minimize(objective)
     prob = cvx.Problem(obj, constraints)
     print("-- [SLS_synthesis_p1] Preparing problem with cvxpy!")
     prob.solve(verbose=True, solver='MOSEK')
     print("-- [SLS_synthesis_p1] optimization status: {:}".format(prob.status))
-    print("-- [SLS_synthesis_p1] h1norm = {:}".format(h1norm.value))
+    print("-- [SLS_synthesis_p1] h1norm = {:}".format(h1norm_yf.value))
 
     if prob.status != "optimal":
         return None, None
@@ -188,36 +257,32 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9):
 
     # since ny=nu=1, we have
     fir_den = [1] + [0 for n in range(T - 1)]
-    # MB2_tf = mtf2ss(co.tf(MB2_value[0, 0], fir_den, dT), eng, minreal=True)
-    # L_tf = mtf2ss(co.tf(L_value[0, 0], fir_den, dT), eng, minreal=True)
     MB2_tf = co.tf(MB2_value[0, 0], fir_den, dT)
     L_tf = co.tf(L_value[0, 0], fir_den, dT)
     K = co.feedback(1, MB2_tf, sign=-1) * L_tf
     K = Ss.mtf2ss(K, minreal=True)
-    return K, (R, N, M, L, H)
+
+    # response mapping
+    Rval = np.array([R[n].value for n in range(T)]).reshape(-1, nx, nx)
+    Nval = np.array([N[n].value for n in range(T)]).reshape(-1, nx, ny)
+    Mval = np.array([M[n].value for n in range(T)]).reshape(-1, nu, nx)
+    Lval = np.array([L[n].value for n in range(T)]).reshape(-1, nu, ny)
+    Hval = np.array(H.value)
+
+    return K, (Rval, Nval, Mval, Lval, Hval)
 
 
 def main():
     P = plant()
-    Pss = Ss.mtf2ss(P, minreal=False)
+    Pss = Ss.mtf2ss(P, minreal=True)
     Pssd = co.c2d(Pss, dT)
 
-    # controllers to test
-    A1 = co.c2d(co.tf([1], [1, 6, 5]), dT)
-    Alp = co.c2d(1.0 / 5 / (0.3 * s + 1) / (0.5 * s + 1) * (0.032 * s + 1) * (0.0021 * s + 1), dT)
-    Ainf = co.tf(
-        [0, 0.000234247581937, -0.001519129809213, 0.004117723048895, -0.005971926120458, 0.004887991561889, -0.002140996863836, 0.000392090600785],
-        [1.0, -7.692092610286219, 25.432665781511435, -46.858394653166798, 51.963159172009036, -34.686122493591625, 12.905678916635351, -2.064894113111176], dT)
-
-    Ac14 = co.tf(
-        [0, 0.000780043976221,  -0.001879759125377, 0.001518988906942, -0.000411374804692, 0],
-        [1.0, -2.915259796026691, 2.835076504158775, -0.919776846642308, 0.000000000000039, 0],
-        dT)
-
-    Asls, internal_data = SLS_synthesis_p1(Pssd, 300, 0.615)
-    # analysis(Pssd, Asls)
-
-    analysis(Pssd, A1)
+    # synthesize controller
+    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=1.0, regularization=1.)
+    if Asls is not None:
+        analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS')
+    analysis(Pssd, A1, Tr=1.0, controller_name='admittance')
+    analysis(Pssd, Ac14, Tr=1.0, controller_name='Hinf')
 
     import IPython
     if IPython.get_ipython() is None:
