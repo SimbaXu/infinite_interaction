@@ -4,7 +4,7 @@ import control as co
 
 
 class MatlabEngine(object):
-    """A Singleton for Matlab Engine.
+    """ Matlab Engine (Singleton)
 
     """
     matlab_engine_instance = None
@@ -24,6 +24,26 @@ class MatlabEngine(object):
         return getattr(self.matlab_engine_instance, name)
 
 
+def impulse2tf(M, dT):
+    """ Convert a impulse reponse to a tranfer matrix.
+
+    Args:
+        M (ndarray): Shape (T, ny, nu). Impulse reponse of the filter.
+        dT (float): Time step.
+    """
+    M = np.array(M)
+    T, ny, nu = M.shape
+    common_den = [1] + [0 for i in range(T - 1)]
+
+    fir_num = np.zeros((ny, nu, T))
+    fir_den = np.zeros((ny, nu, T))
+    for i in range(ny):
+        for j in range(nu):
+            fir_den[i, j, :] = common_den
+            fir_num[i, j, :] = M[:, i, j]
+    return co.tf(fir_num, fir_den, dT)
+
+
 def get_partitioned_mats(P, nu, ny):
     """ Return the partitioned matrices of P.
     """
@@ -40,6 +60,19 @@ def get_partitioned_mats(P, nu, ny):
     D22 = P.D[P.outputs - ny:, P.inputs - nu:]
 
     return A, B1, B2, C1, C2, D11, D12, D21, D22
+
+
+def dft_matrix(N):
+    """ Return W.
+
+    For a complex sequence x, we have: DFT{x} = W x
+    """
+    W0 = np.exp(- 2j * np.pi / N)
+    W = np.ones((N, N), dtype=complex)
+    for i in range(N):
+        for j in range(N):
+            W[i, j] = W0 ** (i * j)
+    return W
 
 
 def get_num_dens(Plist):
