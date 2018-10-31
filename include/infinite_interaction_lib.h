@@ -17,6 +17,17 @@ typedef std::vector<double> dVector;
 
 
 
+class LTI {
+public:
+    // virtual method allows derived class to call its implementation,
+    // instead of the base class implementation.
+    virtual dVector compute(const dVector & y_n) {};
+    // virtual destructor allows Derived Classes to destroy its internal
+    // states. This is always recommend when polymorphism is needed.
+    // https://stackoverflow.com/questions/461203/when-to-use-virtual-destructors
+    virtual ~LTI() {};
+};
+
 
 /*! Discrete-time MIMO FIR series+feedback (srfb) controller.
  *
@@ -48,7 +59,7 @@ typedef std::vector<double> dVector;
  *   beta = M[1] * u[n - 1] + ... + M[T - 1] * u[n - T + 1]
  *   u[n] = alpha - beta
  */
-class FIRsrfb {
+class FIRsrfb: public LTI {
     unsigned int T, ny, nu, /*FIR banks shape*/
             yidx = 0, uidx = 0, ybank_sz, ubank_sz;  /*Current index of y[n][0] and u[n][0] respectively.*/
     dVector L, MB2,   /*FIR coefficients in row-order*/
@@ -129,7 +140,7 @@ dVector FIRsrfb::compute(const dVector & y_n){
  * The filter is constructed by two arrays: the numeration and the denominator.
  * In the following, x[n] is the input while y[n] is the output.
  */
-class DiscreteTimeFilter {
+class DiscreteTimeFilter: public LTI {
     /*! Order of the filter. Is basically the order of the denominator. */
     int order;
     /*! Current index. */
@@ -153,6 +164,7 @@ public:
      * @return y_n
      */
     double compute(double x_n);
+    dVector compute(const dVector & x_n);
 };
 
 DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
@@ -192,6 +204,11 @@ double DiscreteTimeFilter::compute(double x_n) {
     }
     y_mem[n % deg] = sum / a[0];
     return y_mem[n % deg];
+}
+
+dVector DiscreteTimeFilter::compute(const dVector & x_n) {
+    dVector y_n {compute(x_n[0])};
+    return y_n;
 }
 
 

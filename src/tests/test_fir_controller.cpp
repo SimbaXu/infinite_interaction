@@ -199,3 +199,41 @@ TEST(FIR, badinput_wrongshape_L){
 
 
 
+// create a vector of shared_ptr<LTI> that points to DiscreteTimeFilter or FIRsrfb
+TEST(LTI, basic){
+    typedef std::shared_ptr<LTI> LTI_ptr;
+    std::vector<LTI_ptr> ctrl_vecptr;
+    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {1}, dVector {1, -1}));
+    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {0}, dVector {1, -0.99}, 10));
+    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
+    ctrl_vecptr.push_back(std::make_shared<FIRsrfb>(4, 1, 1, L, MB2));
+
+    // test filter number zero
+    dVector uout(10);
+    uout = ctrl_vecptr[0]->compute(dVector {1});
+    EXPECT_EQ(uout[0], 1.0);
+    uout = ctrl_vecptr[0]->compute(dVector {1.5});
+    EXPECT_EQ(uout[0], 2.5);
+    uout = ctrl_vecptr[0]->compute(dVector {-2.5});
+    EXPECT_EQ(uout[0], 0);
+
+    // test filter number 1
+    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    EXPECT_DOUBLE_EQ(9.9, uout[0]);
+    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    EXPECT_DOUBLE_EQ(0.99 * 9.9, uout[0]);
+    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    EXPECT_DOUBLE_EQ(0.99 * 0.99 * 9.9, uout[0]);
+
+    // test filter number 2
+    dVector y{0, 2, 3, 9, 2, 3, 10, 20, 100}, udesired{0, 0, 2, 11, 37, 60, -12, -367, -949};
+    dVector ui;
+    for (int i = 0; i < y.size(); ++i) {
+        ui = ctrl_vecptr[2]->compute(dVector {y[i]});
+        EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
+    }
+}
+
+
+
+

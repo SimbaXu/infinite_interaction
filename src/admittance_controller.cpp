@@ -13,6 +13,9 @@
 
 using std::cout;
 
+// TODO: Change this node name into something more descriptive like
+// joint admittance controller
+
 
 void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 {
@@ -29,7 +32,7 @@ void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "admittance_control");
+    ros::init(argc, argv, "joint_admittance_controller");
     ros::NodeHandle node_handle("~");
     // general parameters
     std::string name_space = "denso";
@@ -40,7 +43,9 @@ int main(int argc, char **argv)
     std::string robotname = "denso_handle";
     std::string ftmanipname = "FTsensor";
 
-    // FTsensor handler
+    // FT sensor data acquisition setup via FTsensor handler
+    // - define wrench filtering and
+    // - offseting
     std::vector<double> wrench_ref, FT_filter_b, FT_filter_a;
     node_handle.getParam("ft_sensor_ref", wrench_ref);
     if (wrench_ref.size() != 6){
@@ -56,7 +61,7 @@ int main(int argc, char **argv)
     if (FT_debug){
         ft_handler.set_debug(node_handle);
     }
-    // position handler
+    // Robot Joint Position data acquisition (from ros control) via JointPositionHandler
     std::vector<double> position_ref;
     node_handle.getParam("joint_pos_ref", position_ref);
     if (position_ref.size() != 6){
@@ -65,18 +70,20 @@ int main(int argc, char **argv)
     }
     JointPositionHandler position_handler;
     ros::Subscriber position_handler_sub = node_handle.subscribe(joint_state_topic, 3, &JointPositionHandler::signal_callback, &position_handler);
-    ros::Duration(0.5).sleep(); ros::spinOnce(); // update current joint position
+    ros::Duration(0.5).sleep(); ros::spinOnce(); // wait for a few second before updating the current joint position
     if (!position_handler.received_msg()){
         ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
         exit(0);
     }
-    // position controller and command
+
+    // Robot Joint Position commanding interface
     JointPositionController position_act(name_space, node_handle);
     dVector initial_jnt_position = position_handler.get_latest_jnt_position();
     ROS_INFO_STREAM("Initial position: " << initial_jnt_position[0] << ", " << initial_jnt_position[1] << ", "
-                            << initial_jnt_position[2] << ", " << initial_jnt_position[3] << ", "
-                            << initial_jnt_position[4] << ", " << initial_jnt_position[5]);
-    // position command
+		    << initial_jnt_position[2] << ", " << initial_jnt_position[3] << ", "
+		    << initial_jnt_position[4] << ", " << initial_jnt_position[5]);
+
+    // Individual Joint Controllers
     std::vector<DiscreteTimeFilter> admittance_filters;
     for (int i = 0; i < 6; ++i) {
         dVector cof_a, cof_b;
@@ -86,14 +93,14 @@ int main(int argc, char **argv)
         DiscreteTimeFilter filter_(cof_a, cof_b, jnt_initial_pos);
         admittance_filters.push_back(filter_);
     }
-    // torque inputs
+
+    // Publisher for torque inputs to the controller (for logging/debugging purposes)
     ExternalTorquePublisher torque_pub(name_space, node_handle);
 
-    // openrave
+    // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr penv = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-
     boost::thread thviewer(boost::bind(SetViewer,penv,viewername));
     penv->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot;
@@ -101,6 +108,7 @@ int main(int argc, char **argv)
     robot->SetActiveManipulator(ftmanipname);
     auto manip = robot->GetActiveManipulator();
     ros::Rate rate(125);
+
     // temp variable
     std::vector<double> position_cmd = {0, 0, 0, 0, 0, 0};
     std::vector<double> wrench = {0, 0, 0, 0, 0, 0};
@@ -108,17 +116,20 @@ int main(int argc, char **argv)
     std::vector<double> jacobian, jacobian_rot;
     OpenRAVE::Transform T_wee;
     int step_idx = 0;
-    // controller
+
+    // Control loop
     while(!ros::isShuttingDown()){
         auto tstart = ros::Time::now();
+
         // call all callbacks
         ros::spinOnce();
+
         // retrieve the latest wrench measurement, offseted and filtered
         ft_handler.get_latest_wrench(force, torque);
         OpenRAVE::RaveVector<double> rave_force(force[0], force[1], force[2]);
         OpenRAVE::RaveVector<double> rave_torque(torque[0], torque[1], torque[2]);
 
-        // project to joint torque space
+        // transform offset wrench to joint torque
         robot->SetActiveDOFValues(position_handler.get_latest_jnt_position());
         manip->CalculateJacobian(jacobian);
         manip->CalculateAngularVelocityJacobian(jacobian_rot);
@@ -134,17 +145,20 @@ int main(int argc, char **argv)
         matrix_mult(jacobian_rot_T, torque, tau_prj2);
         matrix_add(tau_prj1, tau_prj2, tau_prj);
 
-        // run through joint position filter
+        // Compute joint actuation commands from projected joint torque
         for (int i = 0; i < 6; ++i) {
             double y_ = admittance_filters[i].compute(tau_prj[i]);
             position_cmd[i] = position_ref[i] + y_;
         }
-        // send command
+
+        // Send joint position command
         position_act.set_joint_positions(position_cmd);
         torque_pub.publish_joint_torques(tau_prj);
+
         // record time required
         auto tend = ros::Time::now();
         ros::Duration tdur = tend - tstart;
+
         // report, clean up then sleep
         ROS_DEBUG_STREAM_THROTTLE(1, "force: " << force[0] << ", " << force[1] << ", " << force[2]);
         ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
