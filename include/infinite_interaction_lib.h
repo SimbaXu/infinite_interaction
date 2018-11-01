@@ -66,13 +66,19 @@ class FIRsrfb: public LTI {
             ybank, ubank,  /*Storage banks*/
             alpha, beta, un;  /*temp*/
 
+    // initialize filter internal variables (input and output banks, etc)
+    // This function should only be used in a constructor.
+    void init_filter(dVector uinit);
+
 public:
     FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_);
+    // initialize the filter with initial outputs being uinit for all time steps
+    FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_, dVector uinit);
     dVector compute(const dVector & y_n); /*See class docstring*/
 };
 
 
-FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
+void FIRsrfb::init_filter(dVector uinit) {
     // check shape consistency
     if (T * ny * nu != L.size() or T * nu * nu != MB2.size()){
         throw std::invalid_argument("Wrong input shape");
@@ -90,10 +96,27 @@ FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_
     ubank_sz = ubank.size();
     std::fill(ybank.begin(), ybank.end(), 0);
     std::fill(ubank.begin(), ubank.end(), 0);
+    // fill ubank with initial value
+    for(unsigned int i=0; i < T; ++i){
+        for(unsigned int j=0; j < nu; ++j){
+            ubank[j + i * nu] = uinit[j];
+        }
+    }
     // initiate temporary variable
     alpha.resize(nu);
     beta.resize(nu);
     un.resize(nu);
+}
+
+
+FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_, dVector uinit) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
+    init_filter(uinit);
+}
+
+FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
+    dVector uinit (T_ * nu_);
+    std::fill(uinit.begin(), uinit.end(), 0);
+    init_filter(uinit);
 }
 
 dVector FIRsrfb::compute(const dVector & y_n){
@@ -228,7 +251,7 @@ class FTSensorHandler {
 public:
     FTSensorHandler();;
     explicit FTSensorHandler(const dVector &wrench_offset_input);; // with non-zero offset values
-    FTSensorHandler(const dVector &wrench_offset_input, dVector b, dVector a); // with offset and low-pass filter
+    FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in); // with offset and low-pass filter
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);
     void get_latest_wrench(dVector &force, dVector &torque);
     void set_debug(ros::NodeHandle &nh);

@@ -97,6 +97,41 @@ TEST(FIR, general_scalar){
     }
 }
 
+// Scalar case, with output signals initially at some fixed condition
+// Code to reproduce result:
+
+//import SLSsyn as Ss
+//import numpy as np
+//import control as co
+//L = np.array([0, 1, 2, 3], dtype=float).reshape(-1, 1, 1)
+//MB2 = np.array([0, -2, 3, 5], dtype=float).reshape(-1, 1, 1)
+//Lz = Ss.impulse2tf(L, 1)
+//MB2z = Ss.impulse2tf(MB2, 1)
+//CLz = Lz * co.feedback(1, MB2z, sign=-1)
+//CLz = CLz.minreal()
+//# ccde
+//# y[n-1] + 2y[n-2] + 3y[n-3] = u[n] - 2u[n-1] + 3u[n-2] + 5u[n-3]
+//y = [0, 2, 3, 9, 2, 3, 10, 20, 1]
+//Nbuf = 10  # buffer step
+//yin = [0] * Nbuf + y
+//u0 = 2.5
+//uout = [u0] * Nbuf
+//for n in range(Nbuf, len(yin)):
+//    un = yin[n - 1] + 2 * yin[n - 2] + 3 * yin[n - 3] + 2 * uout[n - 1] - 3 * uout[n - 2] - 5 * uout[n - 3]
+//    uout.append(un)
+//u = uout[Nbuf:]
+//print(u)  # got this: [-15.0, -50.0, -65.5, 101.0, 669.5, 1392.5, 305.5, -6892.0, -21614.0]
+TEST(FIR, scalar_initial_cond){
+    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5}, uinit{2.5};
+    FIRsrfb controller (4, 1, 1, L, MB2, uinit);  // 4-steps horizon
+    dVector y{0, 2, 3, 9, 2, 3, 10, 20, 1}, udesired{-15.0, -50.0, -65.5, 101.0, 669.5, 1392.5, 305.5, -6892.0, -21614.0};
+    dVector ui;
+    for (int i = 0; i < y.size(); ++i) {
+        ui = controller.compute(dVector {y[i]});
+        EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
+    }
+}
+
 
 // general case with multi-dimensional input and output
 // the desired output (udesired) is generated using the below script
@@ -233,7 +268,4 @@ TEST(LTI, basic){
         EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
     }
 }
-
-
-
 

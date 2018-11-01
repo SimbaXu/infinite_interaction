@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 2.8.3)
 project(infinite_interaction)
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+# to prevent optimizing out variable during debugging, uncomment the
+# below line
+# set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -28,16 +30,16 @@ include_directories(
 )
 
 catkin_package()
-add_executable(admittance_controller src/admittance_controller.cpp)
-target_include_directories(admittance_controller PUBLIC include)
-target_link_libraries(admittance_controller
+add_executable(joint_admittance_controller src/admittance_controller.cpp)
+target_include_directories(joint_admittance_controller PUBLIC include)
+target_link_libraries(joint_admittance_controller
   ${catkin_LIBRARIES}
   # openrave depencidenc
   ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
   ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
   )
-set_target_properties(admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
-set_target_properties(admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
+set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
+set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
 add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
 target_include_directories(sinuisoidal_motion_generator PUBLIC include)
