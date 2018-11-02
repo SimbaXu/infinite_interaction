@@ -48,7 +48,8 @@ def plant(Larm=0.4):
     """
     s = co.tf([1, 0], [1])
     R1 = (-s + 55.56) / (s + 55.56) / (0.0437 * s + 1)
-    H = (50 + 5 * s)
+    # H = (50 + 5 * s)
+    H = 50 * (20 - s) / (20 + s)
     Se = 2 * np.pi * 73 / (s + 2 * np.pi * 73)
     R2 = 0.475 * s ** 2 / (s / 100 + 1) ** 2 * 35 / (s + 35) * (-s + 66) / (s + 66)
 
@@ -104,7 +105,7 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     mag_bnd_T = [-4, -4, -18, -14, -21, -34, -67]
 
     if internal_data is not None:
-        T = internal_data[0].shape[0]
+        T = internal_data['internal responses'][0].shape[0]
     else:
         T = 256
     omegas = np.arange(int(T / 2)) * 2 * np.pi / T / 0.008
@@ -128,7 +129,7 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     plt.show()
 
     if internal_data is not None:
-        (Rval, Nval, Mval, Lval, Hval) = internal_data
+        (Rval, Nval, Mval, Lval) = internal_data['internal responses']
         T = Rval.shape[0]
         T_Half = int(T / 2)
         Rdft = np.fft.fft(Rval[:, 0, 0], axis=0)
@@ -269,7 +270,8 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
     Lval = np.array([L[n].value for n in range(T)]).reshape(-1, nu, ny)
     Hval = np.array(H.value)
 
-    return K, (Rval, Nval, Mval, Lval, Hval)
+    return K, {'internal responses': (Rval, Nval, Mval, Lval),
+               'output impulse': Hval, 'L': L_value, 'MB2': MB2_value}
 
 
 def main():
