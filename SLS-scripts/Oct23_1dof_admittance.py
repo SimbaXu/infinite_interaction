@@ -49,7 +49,8 @@ def plant(Larm=0.4):
     s = co.tf([1, 0], [1])
     R1 = (-s + 55.56) / (s + 55.56) / (0.0437 * s + 1)
     # H = (50 + 5 * s)
-    H = 30 * (40 - s) / (40 + s)
+    H = 50 * (20 - s) / (20 + s)
+    # H = 5
     Se = 2 * np.pi * 73 / (s + 2 * np.pi * 73)
     R2 = 0.475 * s ** 2 / (s / 100 + 1) ** 2 * 35 / (s + 35) * (-s + 66) / (s + 66)
 
@@ -60,7 +61,7 @@ def plant(Larm=0.4):
 
 
 def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
-             internal_data=None):
+             internal_data=None, m=0.5, b=10, k=80):
     """Analysis of closed-loop response.
 
     Args:
@@ -79,21 +80,46 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     w_nyquist = np.pi / dT
     freqs = np.logspace(-2, np.log10(w_nyquist) - 1e-2, 100)
     mag, phase, omega = H.freqresp(freqs)
+    # step and impulse response
     T, y_step = co.step_response(H, [0, 10])
-    T, y_imp = co.impulse_response(H, [0, 10])
+    # NOTE1: if T = [0, 10], the algorithm would not compute the
+    # impulse response, but the response to a linearly decreasing
+    # input from 1 at time 0 to 0 at time 10. To address this issue,
+    # input the whole time vector.
+
+    # NOTE2: co.impulse is not identical to matlab impulse. The
+    # difference is that co.impulse compute the reponse w.r.t to a
+    # input of the form [1, 0, ...], while matlab returns the reponse
+    # to [1 / Ts, 0, ...]. Matlab's convention would produce similar
+    # impulse response for two corresponding c-time and d-time. co's
+    # convention is more theoretical.
+
     T_step = np.arange(y_step.shape[1]) * dT  # get correct T
-    T_imp = np.arange(y_imp.shape[1]) * dT
     dss = y_step[0, -1]
+    # const-jerk input: accelerate to 5 N in 0.3 sec, then deccelerate to 1 in 0.3 sec
+    T_forced, F_forced = const_jerk_input(duration=10, accel_duration=0.6, f_max=4, f_ss=1.0, dT=dT)
+    T_forced, Y_forced, _ = co.forced_response(H, T_forced, F_forced)
 
     # step response
-    fig, axs = plt.subplots(2, 1)
+    fig, axs = plt.subplots(3, 1)
     axs[0].plot(T_step, y_step[0, :], label='Hd(t)*u(t)')
-    axs[0].plot(T_imp, y_imp [0, :], label='Hd(t)*delta(t)')
+    axs[0].plot(T_forced, Y_forced[0, :], label='resp to const-jerk')
     axs[0].plot([0, Tr, Tr, 10], [0, 0, 0.98 * dss, 0.98 * dss], '--', c='gray')
     axs[0].plot([0, 10], [Mp * dss, Mp * dss], '--', c='gray', label='dss={:.5f}'.format(dss))
-    axs[0].legend()
+    axs[0].legend(loc=1)  # upper right
     axs[0].set_xlabel('Time(sec)')
     axs[0].set_ylabel('y(m)')
+
+    # impulse response, comparison with an ideal mass/spring/damper
+    H_model = co.c2d(co.tf([1], [m, b, k]), dT)
+    T_imp = np.arange(0, 10, 0.008)
+    _, y_imp = co.impulse_response(H, T_imp)
+    _, y_imp_model = co.impulse_response(H_model, T_imp)
+
+    axs[2].plot(T_imp, y_imp[0, :], label='H[n]')
+    axs[2].plot(T_imp, y_imp_model[0, :], label='ref-model')
+    axs[2].legend()
+    axs[2].text(5, 0.0003, 'model(m={:},b={:},k={:})'.format(m, b, k), horizontalalignment='center')
 
     # frequency responses
     mag_yn = 20 * np.log10(mag[0, 0])
@@ -138,7 +164,23 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
         plt.show()
 
 
-def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
+def const_jerk_input(duration=10, accel_duration=0.6, f_max=4, f_ss=1.0, dT=dT):
+    """
+    """
+    t_arr = np.arange(0, duration, dT)
+    f_arr = []
+    for t in t_arr:
+        if t < accel_duration / 2:
+            f_arr.append(t * f_max / (accel_duration / 2))
+        elif t < accel_duration:
+            f_arr.append(f_max - (t - accel_duration / 2) * (f_max - f_ss) / (accel_duration / 2))
+        else:
+            f_arr.append(f_ss)
+    return t_arr, np.array(f_arr)
+
+
+def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_signal='step',
+                     Mp=1.01, m=0.5, b=10, k=80):
     """Synthesize a controller using SLS.
 
     Procedure p1
@@ -186,6 +228,7 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
                 R[n + 1] - R[n] * A - N[n] * C2 == np.eye(nx) * mult,
                 M[n + 1] - M[n] * A - L[n] * C2 == 0
             ])
+
     # closed-loop response: (1->2) mapping
     H = cvx.Variable((T, 2))
     for n in range(T):
@@ -201,52 +244,72 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
 
     # constraint in time-domain, if specified.
     if const_steady > 0:
-        upper = np.ones(T) * const_steady * 1.01
-        lower = np.ones(T) * (-0.5)
+        # input signals
+        # step input
+        if test_signal == 'step':
+            input_signal = np.ones(500)
+        elif test_signal == 'const_jerk':
+            _, input_signal = const_jerk_input(
+                duration=5, accel_duration=0.6, f_max=4, f_ss=1.0)
+        else:
+            # trivial to satisfy
+            input_signal = np.zeros(500)
+
+        horizon = input_signal.shape[0]
+        conv_mat = form_convolutional_matrix(input_signal, T)
+        upper = np.ones(horizon) * const_steady * Mp
+        lower = np.ones(horizon) * (-0.5)
         lower[int(Tr / dT):] = const_steady * 0.98
-        conv_mat = np.tril(np.ones((T, T)))
-        constraints.extend([
-            conv_mat * H[:, 0] <= upper,
-            conv_mat * H[:, 0] >= lower
-        ])
+
+        # constraints.extend([
+        #     conv_mat * H[:, 0] <= upper,
+        #     conv_mat * H[:, 0] >= lower
+        # ])
+
+        constraints.append(H[:, 0] >= -1e-4)
         constraints.append(h1norm_yf == const_steady)
-        # desired impulse response
-        imp_desired = np.zeros(T)
-        imp_avg = const_steady / 100  # average length
-        for i in range(100):
-            imp_desired[i] = 2 * imp_avg - (2 * imp_avg / 100) * i
-        h2norm_yf = cvx.norm(H[:, 0] - imp_desired)
-    else:
-        h2norm_yf = cvx.norm(H[:, 0])
-    objective = h2norm_yf
+
+    # objective: match the impulse response of a given system
+    sys_model = co.c2d(co.tf([1], [m, b, k]), dT)
+    _, imp_model = co.impulse_response(sys_model, np.arange(T) * dT)
+    # NOTE: have to use norm, sum_of_squares does not work. The reason
+    # is the magnitude of the objective function must not be too
+    # small. The optimizer seems to get confuse and simply stop
+    # working.
+    objective = 1e6 * cvx.norm(H[11:, 0] - imp_model[0, :T - 11])
 
     # try some regularization
     if regularization > 0:
-        # objective += regularization * (cvx.norm1(M) + cvx.norm1(N) + cvx.norm1(L) + cvx.norm1(R))
-        objective += regularization * (cvx.norm1(H))
+        reg = regularization * (cvx.norm1(H))
+    else:
+        reg = cvx.abs(cvx.Variable())
 
     # constraint in frequency-domain, if specified
     Hz = Ss.dft_matrix(T) * H
-
     # form upper bound for noise attenuation
-    freqs_bnd_yn = [1e-2, 3.0, 30, 255]  # rad
-    mag_bnd_yn = [-36, -36, -74, -130]  # db
+    freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
+    mag_bnd_yn = [-10, -10, -40, -74, -130]  # db
     omegas = np.arange(int(T / 2)) * 2 * np.pi / T / dT
     omegas[0] = 1e-2
-    wS_inv = np.ones(T) * 100  # infinity
-    wS_inv[:int(T / 2)] = np.power(10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
-    constraints.append(cvx.abs(Hz[:, 0]) <= wS_inv)
+    wN_inv = np.ones(T) * 100  # infinity
+    wN_inv[:int(T / 2)] = np.power(
+        10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
+    constraints.append(cvx.abs(Hz[:, 0]) <= wN_inv)
 
     freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
-    mag_bnd_T = [-4, -4, -18, -14, -21, -34, -67]
+    mag_bnd_T = [6, 6, 6, 6, 6, 6, 6]
+
+    wT_inv = np.ones(T) * 100  # infinity
+    wT_inv[:int(T / 2)] = np.power(
+        10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
 
     # optimize
-    obj = cvx.Minimize(objective)
+    obj = cvx.Minimize(objective + reg)
     prob = cvx.Problem(obj, constraints)
     print("-- [SLS_synthesis_p1] Preparing problem with cvxpy!")
-    prob.solve(verbose=True, solver='MOSEK')
+    prob.solve(verbose=True, solver=cvx.MOSEK)
     print("-- [SLS_synthesis_p1] optimization status: {:}".format(prob.status))
-    print("-- [SLS_synthesis_p1] h1norm = {:}".format(h1norm_yf.value))
+    print("-- [SLS_synthesis_p1] obj = {:}, reg = {:}".format(objective.value, reg.value))
 
     if prob.status != "optimal":
         return None, None
@@ -274,13 +337,37 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1):
                'output impulse': Hval, 'L': L_value, 'MB2': MB2_value}
 
 
+def form_convolutional_matrix(input_signal, T):
+    """Find the convolutional matrix for computing convolution.
+
+    Consider a signal x, the output signal y = input_signal * x can be
+    computed as the matrix multiplication y = [conv matrix of input_signal] x.
+
+    Let input_signal = u[0],...,u[T-1], the convolutional matrix is
+    given by:
+
+    [u[0]                ]
+    [u[1], u[0],         ]
+    [u[2], u[1], u[0], ..]
+    ...
+    [u[T-1], ..,     u[0]]
+    ...
+    [u[N-1], ...         ]
+    """
+    N = input_signal.shape[0]
+    conv_mat = np.zeros((N, T))
+    for i in range(T):
+        conv_mat[i:, i] = input_signal[:N-i]
+    return conv_mat
+
+
 def main():
     P = plant()
     Pss = Ss.mtf2ss(P, minreal=True)
     Pssd = co.c2d(Pss, dT)
 
     # synthesize controller
-    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=1.0, regularization=1.)
+    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=3.0, regularization=1e-7)
     if Asls is not None:
         analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS')
     analysis(Pssd, A1, Tr=1.0, controller_name='admittance')
