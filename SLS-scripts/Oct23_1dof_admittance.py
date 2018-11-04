@@ -24,7 +24,7 @@ Ac14 = co.tf(
     dT)
 
 
-def plant(Larm=0.4):
+def plant(Larm=0.4, Hgain=20, Hdelay=0.01):
     """Nominal Model as defined in Oct02_SISO_model.m
 
     Return a linear model of the admittance control robot.
@@ -36,7 +36,22 @@ def plant(Larm=0.4):
 
     y:   position of the end-effector
     fHT: force output, does not have physical meaning, only use to
-         form the complementary sensitivity transfer function T.
+     # synthesize controller
+    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 357]
+    mag_bnd_T =   [6,    6,   6,   -10, -40]
+    # freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
+    # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
+    freqs_bnd_yn = [1e-2, 3.0, 30, 255]  # rad
+    mag_bnd_yn = [-36, -36, -74, -130]  # db
+    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=3.0, regularization=50,
+                                           freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+    if Asls is not None:
+        analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
+                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+
+        form the complementary sensitivity transfer function T.
     mm: effective torque measured,
 
     fH: force exerted by human,
@@ -50,11 +65,13 @@ def plant(Larm=0.4):
     """
     s = co.tf([1, 0], [1])
     R1 = (-s + 55.56) / (s + 55.56) / (0.0437 * s + 1)
+    # NOTE: the near last two terms is the first-order pade
+    # approximation of the transport delay exp(-sHdelay).
     # NOTE: the last two terms: 10 / (10 + s) encodes the fact that
     # human is very bad at following anything faster than 10
     # rad/s. These terms essentially mean unit gain at low frequency
     # and quick drop afterward.
-    H = 50 * (20 - s) / (20 + s) * 10 / (10 + s)
+    H = Hgain * (1 - Hdelay * s) / (1 + Hdelay * s) * 10 / (10 + s)
     Se = 2 * np.pi * 73 / (s + 2 * np.pi * 73)
     R2 = 0.475 * s ** 2 / (s / 100 + 1) ** 2 * 35 / (s + 35) * (-s + 66) / (s + 66)
 
@@ -70,7 +87,10 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
              freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
     """Analysis of closed-loop response.
 
+    Simulate the system and draw several plots.
+
     Args:
+        plant: A discrete-time LTI system.
         internal_data: The internal responses {R, M, N, L, H} in that
                        order. Or can be None.
     """
@@ -287,13 +307,13 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         # input signals
         # step input
         if test_signal == 'step':
-            input_signal = np.ones(500)
+            input_signal = np.ones(1024)
         elif test_signal == 'const_jerk':
             _, input_signal = const_jerk_input(
                 duration=5, accel_duration=0.6, f_max=4, f_ss=1.0)
         else:
             # trivial to satisfy
-            input_signal = np.zeros(500)
+            input_signal = np.zeros(1024)
 
         horizon = input_signal.shape[0]
         conv_mat = form_convolutional_matrix(input_signal, T)
@@ -320,14 +340,14 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
 
     # try some regularization
     if regularization > 0:
-        # reg = regularization * (cvx.norm1(H[:, 0]))
-        reg = 0
-        for i in range(T):
-            scale = float(i) / T  # increase weight for higher values of i
-            reg += scale * regularization * cvx.norm1(L[i])
-            reg += scale * regularization * cvx.norm1(M[i] * B2)
-            # reg += regularization * cvx.norm1(N[i])
-            # reg += regularization * cvx.norm1(R[i])
+        reg = regularization * (cvx.norm1(H[:, 0]))
+        # reg = 0
+        # for i in range(T):
+        #     scale = float(i) / T  # increase weight for higher values of i
+        #     reg += scale * regularization * cvx.norm1(L[i])
+        #     reg += scale * regularization * cvx.norm1(M[i] * B2)
+        #     # reg += regularization * cvx.norm1(N[i])
+        #     # reg += regularization * cvx.norm1(R[i])
 
     else:
         reg = cvx.abs(cvx.Variable())
@@ -409,34 +429,41 @@ def form_convolutional_matrix(input_signal, T):
 
 
 def main():
-    P = plant()
-    Pss = Ss.mtf2ss(P, minreal=True)
-    Pssd = co.c2d(Pss, dT)
+    Ptf_design = plant()
+    Pss_design = Ss.mtf2ss(Ptf_design, minreal=True)
+    Pssd_design = co.c2d(Pss_design, dT)
 
     # synthesize controller
-    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
-    mag_bnd_T =   [6,    6,   6,   0, 0, 0, 0]
-    freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
-    mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
-    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=3.0, regularization=50,
+    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 357]
+    mag_bnd_T =   [6,    6,   6,   -10, -40]
+    # freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
+    # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
+    freqs_bnd_yn = [1e-2, 3.0, 20, 30, 255]  # rad
+    mag_bnd_yn = [-20, -20, -20, -74, -130]  # db
+    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 256, 0.0125, Tr=3.0, regularization=0,
                                            freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
-    if Asls is not None:
-        analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
-                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+                                           m=2.0, b=20, k=50)
 
-    analysis(Pssd, A1, Tr=1.0, controller_name='admittance',
+    # test/analysis
+    Ptf_test = plant(Hgain=0)
+    Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
+    if Asls is not None:
+        analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
+                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+                 m=2, b=20, k=50)
+
+    analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
-    analysis(Pssd, Ac14, Tr=1.0, controller_name='Hinf',
+    analysis(Pssd_test, Ac14, Tr=1.0, controller_name='Hinf',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
 
     import IPython
     if IPython.get_ipython() is None:
         IPython.embed()
-
 
 if __name__ == '__main__':
     main()
