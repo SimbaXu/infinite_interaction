@@ -127,14 +127,14 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     T_forced, Y_forced, _ = co.forced_response(H, T_forced, F_forced)
 
     # step response
-    fig, axs = plt.subplots(3, 1)
-    axs[0].plot(T_step, y_step[0, :], label='Hd(t)*u(t)')
-    axs[0].plot(T_forced, Y_forced[0, :], label='resp to const-jerk')
-    axs[0].plot([0, Tr, Tr, 10], [0, 0, 0.98 * dss, 0.98 * dss], '--', c='gray')
-    axs[0].plot([0, 10], [Mp * dss, Mp * dss], '--', c='gray', label='dss={:.5f}'.format(dss))
-    axs[0].legend(loc=1)  # upper right
-    axs[0].set_xlabel('Time(sec)')
-    axs[0].set_ylabel('y(m)')
+    fig, axs = plt.subplots(2, 2)
+    axs[0, 0].plot(T_step, y_step[0, :], label='Hd(t)*u(t)')
+    axs[0, 0].plot(T_forced, Y_forced[0, :], label='resp to const-jerk')
+    axs[0, 0].plot([0, Tr, Tr, 10], [0, 0, 0.98 * dss, 0.98 * dss], '--', c='gray')
+    axs[0, 0].plot([0, 10], [Mp * dss, Mp * dss], '--', c='gray', label='dss={:.5f}'.format(dss))
+    axs[0, 0].legend(loc=1)  # upper right
+    axs[0, 0].set_xlabel('Time(sec)')
+    axs[0, 0].set_ylabel('y(m)')
 
     # impulse response, comparison with an ideal mass/spring/damper
     H_model = co.c2d(co.tf([1], [m, b, k]), dT)
@@ -142,10 +142,10 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     _, y_imp = co.impulse_response(H, T_imp)
     _, y_imp_model = co.impulse_response(H_model, T_imp)
 
-    axs[2].plot(T_imp, y_imp[0, :], label='H[n]')
-    axs[2].plot(T_imp, y_imp_model[0, :], label='ref-model')
-    axs[2].legend()
-    axs[2].text(5, 0.0003, 'model(m={:},b={:},k={:})'.format(m, b, k), horizontalalignment='center')
+    axs[1, 0].plot(T_imp, y_imp[0, :], label='H[n]')
+    axs[1, 0].plot(T_imp, y_imp_model[0, :], label='ref-model')
+    axs[1, 0].legend()
+    axs[1, 0].text(5, 0.0003, 'model(m={:},b={:},k={:})'.format(m, b, k), horizontalalignment='center')
 
     # frequency responses
     mag_yn = 20 * np.log10(mag[0, 0])
@@ -160,17 +160,24 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     wS_inv = np.ones(T) * 100  # infinity
     wS_inv[:int(T / 2)] = np.power(10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
     mag_wS = 20 * np.log10(wS_inv)
-    axs[1].scatter(omegas[:int(T / 2)], mag_wS[:int(T / 2)], label='1/wN', c='C2')
+    axs[0, 1].scatter(omegas[:int(T / 2)], mag_wS[:int(T / 2)], label='1/wN', c='C2')
+    axs[0, 1].plot(freqs, mag_yn, label='H_yn(z)', c='C0')
+    axs[0, 1].plot(freqs, mag_T, label='T(z)', c='C1')
+    axs[0, 1].plot([w_nyquist, w_nyquist], [np.min(mag_yn), np.max(mag_yn)], '--', c='red')
+    axs[0, 1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='1/wN')
+    axs[0, 1].plot(freqs_bnd_T, mag_bnd_T, 'x--', c='C1', label='1/wT')
+    axs[0, 1].set_xscale('log')
+    axs[0, 1].set_ylabel('Mag(dB)')
+    axs[0, 1].set_xlabel('Freq(rad/s)')
+    axs[0, 1].legend()
 
-    axs[1].plot(freqs, mag_yn, label='H_yn(z)', c='C0')
-    axs[1].plot(freqs, mag_T, label='T(z)', c='C1')
-    axs[1].plot([w_nyquist, w_nyquist], [np.min(mag_yn), np.max(mag_yn)], '--', c='red')
-    axs[1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='1/wN')
-    axs[1].plot(freqs_bnd_T, mag_bnd_T, 'x--', c='C1', label='1/wT')
-    axs[1].set_xscale('log')
-    axs[1].set_ylabel('Mag(dB)')
-    axs[1].set_xlabel('Freq(rad/s)')
-    axs[1].legend()
+    # nyquist plot of H_yn (noise to output)
+    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
+    axs[1, 1].plot(H_yn.real, H_yn.imag, 'o-')
+    axs[1, 1].set_title("Nyquist plot of H_yn(s)")
+
+    for i in [0, 30, 40, 50, 60, 63, 65, 69, 73, 77, 80, 99]:
+        axs[1, 1].text(H_yn[i].real, H_yn[i].imag, "{:.3f} rad/s".format(freqs[i]))
 
     fig.suptitle('Analysis plots: {:}'.format(controller_name))
     plt.show()
@@ -431,7 +438,7 @@ def form_convolutional_matrix(input_signal, T):
 
 
 def main():
-    Ptf_design = plant(Hdelay=0.05, Hgain=50)
+    Ptf_design = plant(Hdelay=0.05, Hgain=20)
     Pss_design = Ss.mtf2ss(Ptf_design, minreal=True)
     Pssd_design = co.c2d(Pss_design, dT)
 
@@ -448,7 +455,7 @@ def main():
                                            m=2.0, b=20, k=50)
 
     # test/analysis
-    Ptf_test = plant(Hgain=20)
+    Ptf_test = plant(Hgain=0, Hdelay=0.05)
     Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
     if Asls is not None:
         analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
