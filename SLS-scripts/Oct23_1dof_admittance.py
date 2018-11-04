@@ -336,7 +336,9 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # is the magnitude of the objective function must not be too
     # small. The optimizer seems to get confuse and simply stop
     # working.
-    objective = 1e6 * cvx.norm(H[11:, 0] - imp_model[0, :T - 11])
+    imp_diff = H[11:, 0] - imp_model[0, :T - 11]
+    weight = np.diag(1 + 1 * (1.0 / T) * np.arange(T - 11))
+    objective = 1e6 * cvx.norm(weight * imp_diff)
 
     # try some regularization
     if regularization > 0:
@@ -429,7 +431,7 @@ def form_convolutional_matrix(input_signal, T):
 
 
 def main():
-    Ptf_design = plant()
+    Ptf_design = plant(Hdelay=0.05, Hgain=50)
     Pss_design = Ss.mtf2ss(Ptf_design, minreal=True)
     Pssd_design = co.c2d(Pss_design, dT)
 
@@ -446,13 +448,13 @@ def main():
                                            m=2.0, b=20, k=50)
 
     # test/analysis
-    Ptf_test = plant(Hgain=0)
+    Ptf_test = plant(Hgain=20)
     Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
     if Asls is not None:
         analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
                  freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                  freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                 m=2, b=20, k=50)
+                 m=3, b=14, k=60)
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
