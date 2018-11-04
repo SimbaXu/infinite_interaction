@@ -4,6 +4,8 @@ import control as co
 import matplotlib.pyplot as plt
 import cvxpy as cvx
 import SLSsyn as Ss
+import yaml
+import os.path
 
 dT = 0.008
 s = co.tf([1, 0], [1])
@@ -48,9 +50,11 @@ def plant(Larm=0.4):
     """
     s = co.tf([1, 0], [1])
     R1 = (-s + 55.56) / (s + 55.56) / (0.0437 * s + 1)
-    # H = (50 + 5 * s)
-    H = 50 * (20 - s) / (20 + s)
-    # H = 5
+    # NOTE: the last two terms: 10 / (10 + s) encodes the fact that
+    # human is very bad at following anything faster than 10
+    # rad/s. These terms essentially mean unit gain at low frequency
+    # and quick drop afterward.
+    H = 50 * (20 - s) / (20 + s) * 10 / (10 + s)
     Se = 2 * np.pi * 73 / (s + 2 * np.pi * 73)
     R2 = 0.475 * s ** 2 / (s / 100 + 1) ** 2 * 35 / (s + 35) * (-s + 66) / (s + 66)
 
@@ -61,7 +65,9 @@ def plant(Larm=0.4):
 
 
 def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
-             internal_data=None, m=0.5, b=10, k=80):
+             internal_data=None, m=0.5, b=10, k=80,
+             freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
+             freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
     """Analysis of closed-loop response.
 
     Args:
@@ -125,11 +131,6 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     mag_yn = 20 * np.log10(mag[0, 0])
     mag_T = 20 * np.log10(mag[1, 0])
     # bounds on H_yn and H_T
-    freqs_bnd_yn = [1e-2, 3.0, 30, 255]
-    mag_bnd_yn = [-36, -36, -74, -130]  # db
-    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
-    mag_bnd_T = [-4, -4, -18, -14, -21, -34, -67]
-
     if internal_data is not None:
         T = internal_data['internal responses'][0].shape[0]
     else:
@@ -155,12 +156,16 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     plt.show()
 
     if internal_data is not None:
+        fig, axs = plt.subplots(2, 1)
         (Rval, Nval, Mval, Lval) = internal_data['internal responses']
         T = Rval.shape[0]
         T_Half = int(T / 2)
         Rdft = np.fft.fft(Rval[:, 0, 0], axis=0)
-        plt.vlines(np.arange(T_Half) * 2 * np.pi / T, 0, np.abs(Rdft[:T_Half]))
-        plt.title('DFT{{R[0, 0]}} T={:d}'.format(T))
+        axs[0].vlines(np.arange(T_Half) * 2 * np.pi / T, 0, np.abs(Rdft[:T_Half]))
+        axs[0].set_title('DFT{{R[0, 0]}} T={:d}'.format(T))
+        axs[1].plot(internal_data['L'].flatten(), label='L[n]')
+        axs[1].plot(internal_data['MB2'].flatten(), label='MB2[n]')
+        axs[1].legend()
         plt.show()
 
 
@@ -179,12 +184,46 @@ def const_jerk_input(duration=10, accel_duration=0.6, f_max=4, f_ss=1.0, dT=dT):
     return t_arr, np.array(f_arr)
 
 
+def print_controller(L, MB2, file_name='super.yaml', controller_name='super'):
+    """ Print the coefficients to yaml format.
+    """
+    CONFIG_DIR = "/home/hung/catkin_ws/src/infinite_interaction/config"
+    file_dir = os.path.join(CONFIG_DIR, file_name)
+    # convert to simple python float before dumping
+    L = list([float(L_) for L_ in np.array(L).flatten()])
+    MB2 = list([float(L_) for L_ in np.array(MB2).flatten()])
+    ny = 1
+    nu = 1
+    T = len(L)
+    ctrl_dict = {'T': T, 'ny': ny, 'nu': nu, 'L': L, 'MB2': MB2}
+    output_dict = {
+        'fir_siso': {
+            controller_name: ctrl_dict
+        }
+    }
+    with open(file_dir, 'w') as f:
+        yaml.dump(output_dict, f, default_flow_style=False)
+    print("-- Wrote controller to {:}".format(file_dir))
+
+
 def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_signal='step',
-                     Mp=1.01, m=0.5, b=10, k=80):
+                     Mp=1.01, m=0.5, b=10, k=80,
+                     freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
+                     freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
     """Synthesize a controller using SLS.
 
     Procedure p1
 
+        Constraints
+        - 20c, 20a, 20b (achievability constraints),
+        - lower bound on impulse response to prevent negative response,
+        - steady-state displacement given constant acting force;
+        - noise attenuation: upper bound on the mapping from noise to displacement;
+        - robust stability: upper bound on the complementary sensitivity transfer function;
+
+        Objectives
+        - regularization using scaled l1 norm on the impulse responses L, MB2
+        - distance to a desired mass/spring/damper model (m,b,k)
     """
     print("-- Starting SLS_synthesis_p1")
     # parameters
@@ -205,6 +244,7 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         N.append(cvx.Variable((nx, ny)))
         M.append(cvx.Variable((nu, nx)))
         L.append(cvx.Variable((nu, ny)))
+
 
     # constraints
     # 20c
@@ -280,28 +320,35 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
 
     # try some regularization
     if regularization > 0:
-        reg = regularization * (cvx.norm1(H))
+        # reg = regularization * (cvx.norm1(H[:, 0]))
+        reg = 0
+        for i in range(T):
+            scale = float(i) / T  # increase weight for higher values of i
+            reg += scale * regularization * cvx.norm1(L[i])
+            reg += scale * regularization * cvx.norm1(M[i] * B2)
+            # reg += regularization * cvx.norm1(N[i])
+            # reg += regularization * cvx.norm1(R[i])
+
     else:
         reg = cvx.abs(cvx.Variable())
 
     # constraint in frequency-domain, if specified
     Hz = Ss.dft_matrix(T) * H
-    # form upper bound for noise attenuation
-    freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
-    mag_bnd_yn = [-10, -10, -40, -74, -130]  # db
     omegas = np.arange(int(T / 2)) * 2 * np.pi / T / dT
     omegas[0] = 1e-2
+
+    # upper bound for noise attenuation
     wN_inv = np.ones(T) * 100  # infinity
     wN_inv[:int(T / 2)] = np.power(
         10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
-    constraints.append(cvx.abs(Hz[:, 0]) <= wN_inv)
 
-    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
-    mag_bnd_T = [6, 6, 6, 6, 6, 6, 6]
-
+    # upper bound for complementary sensitivity transfer function
     wT_inv = np.ones(T) * 100  # infinity
     wT_inv[:int(T / 2)] = np.power(
-        10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
+        10, np.interp(np.log10(omegas), np.log10(freqs_bnd_T), mag_bnd_T) / 20)
+    # add both frequency-domian constraints
+    constraints.append(cvx.abs(Hz[:, 0]) <= wN_inv)
+    constraints.append(cvx.abs(Hz[:, 1]) <= wT_inv)
 
     # optimize
     obj = cvx.Minimize(objective + reg)
@@ -367,11 +414,24 @@ def main():
     Pssd = co.c2d(Pss, dT)
 
     # synthesize controller
-    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=3.0, regularization=1e-7)
+    freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 61, 140, 357]
+    mag_bnd_T =   [6,    6,   6,   0, 0, 0, 0]
+    freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
+    mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
+    Asls, internal_data = SLS_synthesis_p1(Pssd, 256, 0.0125, Tr=3.0, regularization=50,
+                                           freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
     if Asls is not None:
-        analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS')
-    analysis(Pssd, A1, Tr=1.0, controller_name='admittance')
-    analysis(Pssd, Ac14, Tr=1.0, controller_name='Hinf')
+        analysis(Pssd, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
+                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+
+    analysis(Pssd, A1, Tr=1.0, controller_name='admittance',
+             freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+    analysis(Pssd, Ac14, Tr=1.0, controller_name='Hinf',
+             freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
 
     import IPython
     if IPython.get_ipython() is None:
