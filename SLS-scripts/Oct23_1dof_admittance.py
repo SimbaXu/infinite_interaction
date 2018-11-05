@@ -236,7 +236,7 @@ def print_controller(L, MB2, file_name='super.yaml', controller_name='super'):
 def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_signal='step',
                      Mp=1.01, m=0.5, b=10, k=80,
                      freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
-                     freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
+                     freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6], T_delay=11):
     """Synthesize a controller using SLS.
 
     Procedure p1
@@ -343,8 +343,8 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # is the magnitude of the objective function must not be too
     # small. The optimizer seems to get confuse and simply stop
     # working.
-    imp_diff = H[11:, 0] - imp_model[0, :T - 11]
-    weight = np.diag(1 + 2 * (1.0 / T) * np.arange(T - 11))
+    imp_diff = H[T_delay:, 0] - imp_model[0, :T - T_delay]
+    weight = np.diag(1 + 1 * (1.0 / T) * np.arange(T - T_delay))
     objective = 1e6 * cvx.norm(weight * imp_diff)
 
     # try some regularization
@@ -378,17 +378,6 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # add both frequency-domian constraints
     constraints.append(cvx.abs(Hz[:, 0]) <= wN_inv)
     constraints.append(cvx.abs(Hz[:, 1]) <= wT_inv)
-
-    # positivity/passivity (only in [0, 10] rad/s)
-    # coefficient matrix
-    omegas_positive = np.linspace(0, 0.04, 10)
-    W_positive = np.ones((omegas_positive.shape[0], T), dtype=complex)
-    for i in range(omegas_positive.shape[0]):
-        for j in range(T):
-            W_positive[i, j] = np.exp(-1j * omegas_positive[i] * j)
-    constraints.append(
-        cvx.real(W_positive * H[:, 0]) >= 0
-    )
 
     # optimize
     obj = cvx.Minimize(objective + reg)
@@ -449,7 +438,7 @@ def form_convolutional_matrix(input_signal, T):
 
 
 def main():
-    Ptf_design = plant(Hdelay=0.05, Hgain=0)
+    Ptf_design = plant(Hdelay=0.05, Hgain=50)
     Pss_design = Ss.mtf2ss(Ptf_design, minreal=True)
     Pssd_design = co.c2d(Pss_design, dT)
 
@@ -460,19 +449,19 @@ def main():
     # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
     freqs_bnd_yn = [1e-2, 3.0, 20, 30, 255]  # rad
     mag_bnd_yn = [-20, -20, -20, -74, -130]  # db
-    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 256, 0.0125, Tr=3.0, regularization=0,
+    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 256, 0.0125, Tr=3.0, regularization=1,
                                            freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                                            freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                                           m=3.0, b=20, k=60)
+                                           m=1.5, b=28, k=65, T_delay=7)
 
     # test/analysis
-    Ptf_test = plant(Hgain=0, Hdelay=0.05)
+    Ptf_test = plant(Hgain=40, Hdelay=0.05)
     Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
     if Asls is not None:
         analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
                  freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                  freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                 m=3, b=20, k=60)
+                 m=1.5, b=28, k=65)
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
@@ -480,11 +469,6 @@ def main():
     analysis(Pssd_test, Ac14, Tr=1.0, controller_name='Hinf',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
-
-    analysis(Pssd_test, co.tf([1], [1], dT), Tr=1.0, controller_name='Hinf',
-             freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
-
 
     import IPython
     if IPython.get_ipython() is None:
