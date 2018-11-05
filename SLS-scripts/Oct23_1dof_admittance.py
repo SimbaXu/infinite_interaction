@@ -343,8 +343,8 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         #     conv_mat * H[:, 0] >= lower
         # ])
 
-        constraints.append(H_yn >= -1e-4)
-        constraints.append(cvx.sum(H_yn) == const_steady)
+        # constraints.append(H_yn >= -1e-5)
+        # constraints.append(cvx.sum(H_yn) == const_steady)
 
     # objective: match the impulse response of a given system
     sys_model = co.c2d(co.tf([1], [m, b, k]), dT)
@@ -354,7 +354,7 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # small. The optimizer seems to get confuse and simply stop
     # working.
     imp_diff = H_yn[T_delay:, 0] - imp_model[0, :T - T_delay]
-    weight = np.diag(1 + 1 * (1.0 / T) * np.arange(T - T_delay))
+    weight = np.diag(1 + 2 * (1.0 / T) * np.arange(T - T_delay))
     objective = 1e6 * cvx.norm(weight * imp_diff)
 
     # try some regularization
@@ -459,24 +459,24 @@ def main():
 
     # synthesize controller
     freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 357]
-    mag_bnd_T =   [6,    6,   6,   -10, -40]
+    mag_bnd_T =   [-3,    -3,   -3,   -10, -40]
     # freqs_bnd_yn = [1e-2, 3.0, 30, 80, 255]  # rad
     # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
-    freqs_bnd_yn = [1e-2, 3.0, 20, 30, 255]  # rad
-    mag_bnd_yn = [-20, -20, -20, -74, -130]  # db
-    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 256, 0.0125, Tr=3.0, regularization=1,
+    freqs_bnd_yn = [1e-2, 3.0, 20, 50, 255]  # rad
+    mag_bnd_yn = [-20, -20, -20, -94, -130]  # db
+    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
                                            freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                                            freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                                           m=1.5, b=28, k=65, T_delay=7)
+                                           m=1.5, b=24, k=60, T_delay=7)
 
     # test/analysis
-    Ptf_test = plant(Hgain=40, Hdelay=0.05)
+    Ptf_test = plant(Hgain=50, Hdelay=0.05)
     Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
     if Asls is not None:
         analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
                  freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                  freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                 m=1.5, b=28, k=65)
+                 m=1.5, b=24, k=60)
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
