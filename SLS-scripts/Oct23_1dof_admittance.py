@@ -6,6 +6,7 @@ import cvxpy as cvx
 import SLSsyn as Ss
 import yaml
 import os.path
+from scipy.linalg import block_diag
 
 dT = 0.008
 s = co.tf([1, 0], [1])
@@ -261,53 +262,62 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     nx = Pssd.states
     A, B1, B2, C1, C2, D11, D12, D21, D22 = Ss.get_partitioned_mats(Pssd, nu, ny)
 
-    # variables
-    R = []
-    M = []
-    N = []
-    L = []
-    for i in range(T):
-        R.append(cvx.Variable((nx, nx)))
-        N.append(cvx.Variable((nx, ny)))
-        M.append(cvx.Variable((nu, nx)))
-        L.append(cvx.Variable((nu, ny)))
+    ny_out, nu_exo = D11.shape  # control output dimension
 
+    # variables
+    R = cvx.Variable((T * nx, nx))
+    N = cvx.Variable((T * nx, ny))
+    M = cvx.Variable((T * nu, nx))
+    L = cvx.Variable((T * nu, ny))
 
     # constraints
     # 20c
     constraints = [
-        R[0] == 0, M[0] == 0, N[0] == 0,
+        R[:nx, :] == 0, M[:nu, :] == 0, N[:nx, :] == 0,
     ]
-    # 20a, 20b
+    # 20a: t20a_1 R - t20a_2 R - t20a_3 M = t20a_4
+    t20a_1 = np.zeros((T * nx, T * nx))
+    t20a_2 = np.zeros((T * nx, T * nx))
+    t20a_3 = np.zeros((T * nx, T * nu))
+    t20a_4 = np.zeros((T * nx, nx))
     for n in range(T):
-        mult = 1 if n == 0 else 0
-        if n == T - 1:
-             constraints.extend([
-                 - A * R[n] - B2 * M[n] == 0,
-                 - A * N[n] - B2 * L[n] == 0,
-                 - R[n] * A - N[n] * C2 == 0,
-                 - M[n] * A - L[n] * C2 == 0
-             ])
-        else:
-            constraints.extend([
-                R[n + 1] - A * R[n] - B2 * M[n] == np.eye(nx) * mult,
-                N[n + 1] - A * N[n] - B2 * L[n] == 0,
-                R[n + 1] - R[n] * A - N[n] * C2 == np.eye(nx) * mult,
-                M[n + 1] - M[n] * A - L[n] * C2 == 0
-            ])
-
-    # closed-loop response: (1->2) mapping
-    H = cvx.Variable((T, 2))
-    for n in range(T):
+        if n != T - 1:
+            t20a_1[n * nx: (n + 1) * nx, (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
+        t20a_2[n * nx: (n + 1) * nx, n * nx: (n + 1) * nx] = A
+        t20a_3[n * nx: (n + 1) * nx, n * nu: (n + 1) * nu] = B2
         if n == 0:
-            constraints.append(
-                H[n] == cvx.reshape(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21 + D11, (2,)))
-        else:
-            constraints.append(
-                H[n] == cvx.reshape(C1 * R[n] * B1 + D12 * M[n] * B1 + C1 * N[n] * D21 + D12 * L[n] * D21, (2, )))
+            t20a_4[:nx, :nx] = np.eye(nx)
+    constraints.extend(
+        [t20a_1 * R - t20a_2 * R - t20a_3 * M == t20a_4,
+         t20a_1 * N - t20a_2 * N - t20a_3 * L == 0]
+    )
 
-    h2norm_T = cvx.sum_squares(H[:, 1])
-    h1norm_yf = cvx.sum(H[:, 0])
+    # 20b: t20a_1 R - R * A - N C2 == t20a_4
+    # 20b-lower: t20b_1 M - M * A - L * C2 == 0
+    t20b_1 = np.zeros((T * nu, T * nu))
+    for n in range(T):
+        if n != T - 1:
+            t20b_1[n * nu: n * nu + nu, (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
+
+    constraints.extend(
+        [
+            t20a_1 * R - R * A - N * C2 == t20a_4,
+            t20b_1 * M - M * A - L * C2 == 0
+        ]
+    )
+
+    # mapping from exo input to control output
+    C1_blk = block_diag(*[C1] * T)
+    D12_blk = block_diag(*[D12] * T)
+    D11_blk = np.zeros((T * ny_out, nu_exo))
+    D11_blk[:ny_out, :nu_exo] = D11
+    H = C1_blk * R * B1 + D12_blk * M * B1 + C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
+
+    # select component of H that correspond to the mapping from acting
+    # force (and noise) to actual robot displacement (H_yn) and the
+    # mapping that corresponds to the complementary transfer function T.
+    H_yn = H[0::2, :]
+    H_T = H[1::2, :]
 
     # constraint in time-domain, if specified.
     if const_steady > 0:
@@ -333,8 +343,8 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         #     conv_mat * H[:, 0] >= lower
         # ])
 
-        constraints.append(H[:, 0] >= -1e-4)
-        constraints.append(h1norm_yf == const_steady)
+        constraints.append(H_yn >= -1e-4)
+        constraints.append(cvx.sum(H_yn) == const_steady)
 
     # objective: match the impulse response of a given system
     sys_model = co.c2d(co.tf([1], [m, b, k]), dT)
@@ -343,13 +353,13 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # is the magnitude of the objective function must not be too
     # small. The optimizer seems to get confuse and simply stop
     # working.
-    imp_diff = H[T_delay:, 0] - imp_model[0, :T - T_delay]
+    imp_diff = H_yn[T_delay:, 0] - imp_model[0, :T - T_delay]
     weight = np.diag(1 + 1 * (1.0 / T) * np.arange(T - T_delay))
     objective = 1e6 * cvx.norm(weight * imp_diff)
 
     # try some regularization
     if regularization > 0:
-        reg = regularization * (cvx.norm1(H[:, 0]))
+        reg = regularization * (cvx.norm1(H_yn))
         # reg = 0
         # for i in range(T):
         #     scale = float(i) / T  # increase weight for higher values of i
@@ -362,22 +372,25 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         reg = cvx.abs(cvx.Variable())
 
     # constraint in frequency-domain, if specified
-    Hz = Ss.dft_matrix(T) * H
+    W_dft = Ss.dft_matrix(T)
+    Hz_yn = W_dft * H_yn
+    Hz_T = W_dft * H_T
     omegas = np.arange(int(T / 2)) * 2 * np.pi / T / dT
     omegas[0] = 1e-2
 
     # upper bound for noise attenuation
-    wN_inv = np.ones(T) * 100  # infinity
-    wN_inv[:int(T / 2)] = np.power(
+    wN_inv = np.ones((T, 1)) * 100  # infinity
+    wN_inv[:int(T / 2), 0] = np.power(
         10, np.interp(np.log10(omegas), np.log10(freqs_bnd_yn), mag_bnd_yn) / 20)
 
     # upper bound for complementary sensitivity transfer function
-    wT_inv = np.ones(T) * 100  # infinity
-    wT_inv[:int(T / 2)] = np.power(
+    wT_inv = np.ones((T, 1)) * 100  # infinity
+    wT_inv[:int(T / 2), 0] = np.power(
         10, np.interp(np.log10(omegas), np.log10(freqs_bnd_T), mag_bnd_T) / 20)
+
     # add both frequency-domian constraints
-    constraints.append(cvx.abs(Hz[:, 0]) <= wN_inv)
-    constraints.append(cvx.abs(Hz[:, 1]) <= wT_inv)
+    constraints.append(cvx.abs(Hz_yn) <= wN_inv)
+    constraints.append(cvx.abs(Hz_T) <= wT_inv)
 
     # optimize
     obj = cvx.Minimize(objective + reg)
@@ -392,8 +405,8 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
 
     print("-- [SLS_synthesis_p1] Forming controllers!")
     # form controllers (Structure 1, Figure 4b, Wang 2018)
-    MB2_value = np.array([(M[n] * B2).value for n in range(T)]).reshape(ny, nu, -1)
-    L_value = np.array([L[n].value for n in range(T)]).reshape(ny, ny, -1)
+    L_value = np.array(L.value).reshape(ny, nu, -1)
+    MB2_value = np.array((M * B2).value).reshape(nu, nu, -1)
 
     # since ny=nu=1, we have
     fir_den = [1] + [0 for n in range(T - 1)]
@@ -403,14 +416,16 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     K = Ss.mtf2ss(K, minreal=True)
 
     # response mapping
-    Rval = np.array([R[n].value for n in range(T)]).reshape(-1, nx, nx)
-    Nval = np.array([N[n].value for n in range(T)]).reshape(-1, nx, ny)
-    Mval = np.array([M[n].value for n in range(T)]).reshape(-1, nu, nx)
-    Lval = np.array([L[n].value for n in range(T)]).reshape(-1, nu, ny)
-    Hval = np.array(H.value)
+    Rval = np.array([R[n * nx: (n + 1) * nx, :].value for n in range(T)]).reshape(-1, nx, nx)
+    Nval = np.array([N[n * nx: (n + 1) * nx, :].value for n in range(T)]).reshape(-1, nx, ny)
+    Mval = np.array([M[n * nu: (n + 1) * nu, :].value for n in range(T)]).reshape(-1, nu, nx)
+    Lval = np.array([L[n * nu: (n + 1) * nu, :].value for n in range(T)]).reshape(-1, nu, ny)
+    Hval_yn = np.array(H_yn.value)
+    Hval_T = np.array(H_T.value)
 
     return K, {'internal responses': (Rval, Nval, Mval, Lval),
-               'output impulse': Hval, 'L': L_value, 'MB2': MB2_value}
+               'output impulse': (Hval_yn, Hval_T),
+               'L': L_value, 'MB2': MB2_value}
 
 
 def form_convolutional_matrix(input_signal, T):
@@ -465,10 +480,12 @@ def main():
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+             m=1.5, b=28, k=65)
     analysis(Pssd_test, Ac14, Tr=1.0, controller_name='Hinf',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn)
+             freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+             m=1.5, b=28, k=65)
 
     import IPython
     if IPython.get_ipython() is None:
