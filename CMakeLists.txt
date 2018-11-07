@@ -4,7 +4,7 @@ project(infinite_interaction)
 set(CMAKE_CXX_STANDARD 11)
 # to prevent optimizing out variable during debugging, uncomment the
 # below line
-# set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -28,20 +28,29 @@ include_directories(
   ${OpenRAVE_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR} 
   ${catkin_INCLUDE_DIRS}
 )
-
 catkin_package()
-add_executable(joint_admittance_controller src/admittance_controller.cpp)
+
+
+# infintie_interaction_library (library)
+#add_library(infinite_interaction_lib src/infinite_interaction.cpp)
+#target_include_directories(infinite_interaction_lib PUBLIC include)
+
+# admittance controller: (main program)
+add_executable(joint_admittance_controller
+        src/admittance_controller.cpp
+        src/infinite_interaction.cpp
+        )
 target_include_directories(joint_admittance_controller PUBLIC include)
 target_link_libraries(joint_admittance_controller
   ${catkin_LIBRARIES}
-  # openrave depencidenc
+  # openrave dependencies
   ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
   ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
   )
 set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
+add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp src/infinite_interaction.cpp)
 target_include_directories(sinuisoidal_motion_generator PUBLIC include)
 target_link_libraries(sinuisoidal_motion_generator
   ${catkin_LIBRARIES}
@@ -52,14 +61,14 @@ target_link_libraries(sinuisoidal_motion_generator
 set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp)
+add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp src/infinite_interaction.cpp)
 target_link_libraries(test_discrete_time_filter gtest_main
         ${catkin_LIBRARIES}
         )
 target_include_directories(test_discrete_time_filter PUBLIC include)
 
 
-add_executable(test_fir_controller src/tests/test_fir_controller.cpp)
+add_executable(test_fir_controller src/tests/test_fir_controller.cpp src/infinite_interaction.cpp)
 target_link_libraries(test_fir_controller gtest_main
         ${catkin_LIBRARIES}
         )

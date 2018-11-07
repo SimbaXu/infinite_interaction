@@ -5,10 +5,25 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 import sys
+import cvxpy as cvx
+import scipy.signal as signal
+import scipy.io
 
 
 def analysis_freq(extracted_data, cmd, keys):
-    """
+    """Spectral analysis of given data. 
+
+    Signals are selected using the cmd string.
+
+    Plot the magnitude/angle of selected signals at different
+    frequencies. Magnitude is simply the absolute value of the complex
+    valued frequency response.
+
+    Args:
+        extracted_data (dict): Data.
+        cmd (str): String contains information on what signals to extract,
+                   as well as the time interval to be used.
+        keys(list): Sorted dictionary keys. Use in signal selection.
     """
     try:
         indices_str = cmd.split(" ")[2]
@@ -187,18 +202,15 @@ def analysis_view(extracted_data, cmd_string, keys):
     plt.show()
 
 
+def extract_data_from_bag(DATA_PATH):
+    """ Extract data from a bag file from `DATA_PATH`.
 
+    Args
+        DATA_PATH (str): Path to data file.
 
-if __name__ == '__main__':
-    # parse command line
-    try:
-        DATA_PATH = sys.argv[1]
-    except:
-        print("No bag file given as argument! Exit now!")
-        exit(0)
-
-    print("Input Parameters\n -- DATA_PATH: {:}".format(DATA_PATH))
-    # load data
+    Returns
+        (dict): Extracted data
+    """
     print("Start extracting data")
     bag = rosbag.Bag(os.path.expanduser(DATA_PATH))
     extracted_data = {}
@@ -246,11 +258,125 @@ if __name__ == '__main__':
             extracted_data[topic] = {'t': topic_t,
                                      'data': topic_data,
                                      'type': topic_tuple.msg_type}
+    return extracted_data
+
+
+def analysis_z(extracted_data, cmd, keys, gam=0):
+    """Analyze data and identify model in discrete time.
+
+    Note: This script analyse interaction between two scalar signal
+    only. MIMO is possible, but that is for a future project.
+
+    cmd = "z tmin,tmax order idx1,idx2"
+
+    Params:
+        z: Indicator that analysis_z is to be ran.
+        tmin, tmax: Two ends of the analysis interval.
+        order: Desired Order.
+        idx1: Index of the input signal.
+        idx2: Index of the output signal.
+
+    """
+    tmin, tmax = map(float, cmd.split(" ")[1].split(","))
+    Norder = int(cmd.split(" ")[2])
+    idx1, idx2 = cmd.split(" ")[3].split(",")
+    print("-- Analysis interval: [{:.3f}, {:.3f}]\n"
+          "-- Desired Norder: {:d}\n"
+          "-- Input/Output indices: {:}, {:}".format(
+              tmin, tmax, Norder, idx1, idx2))
+    data1 = get_data(extracted_data, idx1, keys)
+    data2 = get_data(extracted_data, idx2, keys)
+
+    Nstart1 = np.argmin(np.abs(data1['t'] - tmin))
+    Nend1 = np.argmin(np.abs(data1['t'] - tmax))
+
+    Nstart2 = np.argmin(np.abs(data2['t'] - data1['t'][Nstart1]))
+    Nend2 = Nstart2 + (Nend1 - Nstart1)
+
+    # notation: Let a=[a0..a[T-1]] and b=[b[0]...b[T-1]] be the
+    # coefficients. By definition we have:
+    # a[0] x[T] + a[1] x[T-1] + ... + a[T-1] x[0] = b[0] y[T] + b[1] y[T-1] + ... + b[T-1] y[0] 
+    # rearrange the equations to obtain:
+    # X a = Y b,
+    # where X and Y are not the vectors of xs and ys, but a matrix
+    # formed by rearranging the vectors appropriately. Note that T is
+    # the degree (Norder + 1) of the relevant polynomial coefficients.
+
+    # x[0] is substracted from X as do y[0] is substracted from Y.
+
+    xoffset = 1.0
+    X = []
+    Y = []
+    for i in range(Norder - 1, Nend1 - Nstart1):
+        X.append(data1['data'][Nstart1 + i: Nstart1 + i + Norder][::-1] - xoffset)
+        Y.append(data2['data'][Nstart2 + i: Nstart2 + i + Norder][::-1])
+    X = np.array(X)
+    Y = np.array(Y)
+
+    N = Nend1 - Nstart1
+
+    # optimization
+    a = cvx.Variable(Norder)
+    b = cvx.Variable(Norder)
+    obj = cvx.sum_squares(X * a - Y * b) / N
+    reg = gam * cvx.norm1(a) + gam * cvx.norm1(b)
+    constraints = [b[0] == 1]
+    prob = cvx.Problem(cvx.Minimize(obj + reg), constraints)
+    prob.solve(solver='MOSEK')
+
+    print("obj: {:f}\nreg: {:f}\na={:}\nb={:}".format(
+        obj.value, reg.value, a.value, b.value))
+
+    # validation by running the filter obtained on data
+    xin = data1['data'][Nstart1: Nend1] - xoffset
+    yact = data2['data'][Nstart2: Nend2]
+    bval = np.array(b.value).reshape(-1)
+    aval = np.array(a.value).reshape(-1)
+    ypred = signal.lfilter(bval, aval, xin)
+    plt.plot(- 160 * xin, label='xin')
+    plt.plot(yact, label='yactual')
+    # plt.plot(ypred, '--', label='ypredict')
+    plt.legend()
+    plt.show()
+
+    scipy.io.savemat("11_1_J3_human.mat", {'x': xin, 'y': yact})
+
+def get_data(extracted_data, idx_str, keys):
+    """ Extract a dictionary using string command.
+    """
+    if len(idx_str.split(",")) == 1:
+        # single index command; e.g. "1" or "2"
+        key = keys[int(idx_str)]
+        return extracted_data[key]
+    elif len(idx_str.split(",")) == 2:
+        # double index command; e.g. "1,2" or "2,0"
+        key = keys[int(idx_str.split(',')[0])]
+        sub_idx = int(idx_str.split(',')[1])
+        return {'t': extracted_data[key]['t'],
+                'data': extracted_data[key]['data'][:,sub_idx],
+                'type': extracted_data[key]['type']}
+    else:
+        raise NotImplementedError("Unable to parse {:}".format(idx_str))
+
+
+if __name__ == '__main__':
+    # parse command line
+    try:
+        DATA_PATH = sys.argv[1]
+    except:
+        print("No bag file given as argument! Exit now!")
+        exit(0)
+
+    print("Input Parameters\n -- DATA_PATH: {:}".format(DATA_PATH))
+
+    # load data
+    extracted_data = extract_data_from_bag(DATA_PATH)
+
     # sort dictionary w.r.t keys
     keys = extracted_data.keys()
     keys.sort()
 
-    # zeroing
+    # zeroing time
     t0 = extracted_data.values()[0]['t'][0]
     for key in keys:
         extracted_data[key]['t'] -= t0
@@ -268,8 +394,13 @@ if __name__ == '__main__':
                  "\n    > plot signal i,j,k"
                  "\n\n -- [freqresp or f] [tmin,tmax or tmin] i,j,k  "
                  "\n    > plot the frequency response of signals i,j,k between tmin and tmax."
-                 "\n    > or tmin and tmin + 12.56."
-    )
+                 "\n    > or tmin and tmin + 12.56.")
+
+    # cmd = "z 60,80 3 2,10"
+    # analysis_z(extracted_data, cmd, keys)
+    # import IPython
+    # if IPython.get_ipython() is None:
+    #     IPython.embed()
 
     print(help_msgs)
     while True:
@@ -282,3 +413,6 @@ if __name__ == '__main__':
 
         elif cmd.split(" ")[0] in ["f", "freqresp"]:
             analysis_freq(extracted_data, cmd, keys)
+
+        elif cmd.split(" ")[0] in ["z"]:
+            pass

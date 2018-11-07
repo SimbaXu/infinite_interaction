@@ -15,6 +15,53 @@
 using std::cout;
 
 
+// Generate a vector of reference command
+// reference motion:
+// mo_type := 1,  x(t) = min(M, dM * t) * sin(omega * t)
+// mo_type := 2,  x(t+1) = M * sin(phase[t]);  phase[t + 1] = phase[t] + omega / t_duration * t
+// motion type 1 generates motion with a single frequency
+// motion type 2 is used to generate smooth motion that have varying
+// frequencies.
+dVector generate_reference_command(int mo_type, double total_duration, double omega, double amplitude){
+    dVector jnt_pos_vec(125 * 3);
+    // any motion generated using this function has a mandatory 3 seconds rests
+    std::fill(jnt_pos_vec.begin(), jnt_pos_vec.end(), 0);
+    if (mo_type == 1) {
+        double amplitude_scaled, t_current, accel_duration, jnt_pos_cur=0;
+        accel_duration = 2;
+        // sinuisoidal trajectory. in the initial 2 seconds the amplitude linearly increases.
+        t_current = 0;
+        while(t_current < total_duration){
+            if (t_current > accel_duration){
+                amplitude_scaled = amplitude;
+            }
+            else {
+                amplitude_scaled = t_current / accel_duration * amplitude;
+            }
+            jnt_pos_cur = amplitude_scaled * sin(omega * t_current);
+            jnt_pos_vec.push_back(jnt_pos_cur);
+            t_current += 0.008;
+        }
+    }
+    else if (mo_type == 2){
+        double t_current = 0, jnt_pos_cur, phase=0, omega_rate = omega / (0.8 * total_duration);
+        while(t_current < total_duration){
+            if (t_current < 0.8 * total_duration){
+                phase += omega_rate * t_current * 0.008;
+            }
+            else {
+                // swift slow down
+                phase += (omega - 4 * omega_rate * (t_current - 0.8 * total_duration)) * 0.008;
+            }
+            jnt_pos_cur = amplitude * sin(phase);
+            jnt_pos_vec.push_back(jnt_pos_cur);
+            t_current += 0.008;
+        }
+    }
+    return jnt_pos_vec;
+}
+
+
 void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 {
     OpenRAVE::ViewerBasePtr viewer = RaveCreateViewer(penv,viewername);
@@ -40,10 +87,14 @@ int main(int argc, char **argv)
     std::string viewername = "qtosg";
     std::string robotname = "denso_handle";
     std::string ftmanipname = "FTsensor";
+    // get parameters
     std::vector<double> wrench_ref;
-    node_handle.getParam("ft_sensor_ref", wrench_ref);
-    std::vector<double> position_ref;
-    node_handle.getParam("joint_pos_ref", position_ref);
+    if (not node_handle.getParam("ft_sensor_ref", wrench_ref)){
+        ROS_ERROR_STREAM("Unable to get reference FT wrench from param sever! Have you loaded experiment_params.yaml? \n -- Exitting!");
+        exit(0);
+    }
+    std::vector<double> jnt_pos_ref;
+    node_handle.getParam("joint_pos_ref", jnt_pos_ref);
     double accel_duration, reach_duration;
     node_handle.getParam("accel_duration", accel_duration);
     if (!node_handle.getParam("reach_duration", reach_duration)){
@@ -55,11 +106,8 @@ int main(int argc, char **argv)
         ROS_ERROR_STREAM("No [cmd_rate] found on parameter server! Use default value (125 Hz)");
         cmd_rate = 125;
     };
-    if (wrench_ref.size() != 6){
-        ROS_ERROR_STREAM("Reference wrench from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
-        exit(0);
-    }
-    if (position_ref.size() != 6){
+
+    if (jnt_pos_ref.size() != 6){
         ROS_ERROR_STREAM("Reference position from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
         exit(0);
     }
@@ -95,39 +143,44 @@ int main(int argc, char **argv)
     auto manip = robot->GetActiveManipulator();
     ros::Rate rate(cmd_rate);
     // temp variable
-    std::vector<double> position_cmd = {0, 0, 0, 0, 0, 0};
+    std::vector<double> jnt_pos_cmd = {0, 0, 0, 0, 0, 0};
     std::vector<double> wrench = {0, 0, 0, 0, 0, 0};
     std::vector<double> tau_prj(6), tau_prj1(6), tau_prj2(6), force(3), torque(3);
     std::vector<double> jacobian, jacobian_rot;
     OpenRAVE::Transform T_wee;
     // controller
     bool done = false;
+    double t_duration, omega, amplitude;
+    int jnt_idx, mo_type;
     while(!ros::isShuttingDown() and !done){
         // ask for motion parameters
-        double t_duration, omega, amplitude;
-        int jnt_idx;
-        cout << "Enter [joint index], [duration], [angular velocity] and amplitude. Separated by space." << std::endl;
-        std::cin >> jnt_idx >> t_duration >> omega >> amplitude;
-        // move the robot to the reference position in 5 seconds
+        cout << "Enter [motion_type: 0 or 1] [joint_index: starting from 0], [duration], [angular_velocity] and [amplitude]. Separated by space."
+                << std::endl << "e.g. [1 2 20 24 0.1]";
+        std::cin >> mo_type >> jnt_idx >> t_duration >> omega >> amplitude;
+
+
+        // generate commanding signal
+        dVector jnt_pos_i = generate_reference_command(mo_type, t_duration, omega, amplitude);
+
+        // move the robot to the reference position in [reach_duration] second
         ros::spinOnce();
         dVector position_init = position_handler.get_latest_jnt_position();
         ROS_INFO_STREAM("Starting experiment. Moving to reference position!. Will take " << reach_duration << " seconds.");
         for (int j = 0; j < (reach_duration * cmd_rate + 1); ++j) {
             double alpha = (double)(j) / (reach_duration * cmd_rate);
             for (int i = 0; i < 6; ++i) {
-                position_cmd[i] = position_init[i] * (1 - alpha) + position_ref[i] * alpha;
+                jnt_pos_cmd[i] = position_init[i] * (1 - alpha) + jnt_pos_ref[i] * alpha;
             }
-            position_act.set_joint_positions(position_cmd);
+            position_act.set_joint_positions(jnt_pos_cmd);
             rate.sleep();
         }
 
         // execute sinuisoidal motion
-        double t_current = 0;
-        double amplitude_scaled = 0;
+        int n = 0;
         auto tstart = ros::Time::now();
         ros::Duration(1).sleep();
         ROS_INFO_STREAM("Start generating sinuisoidal motion.");
-        while (!ros::isShuttingDown() and t_current < t_duration){
+        while (!ros::isShuttingDown() and n < jnt_pos_i.size()){
             auto tstart_loop = ros::Time::now();
             // call all callbacks
             ros::spinOnce();
@@ -152,17 +205,10 @@ int main(int argc, char **argv)
             matrix_mult(jacobian_rot_T, torque, tau_prj2);
             matrix_add(tau_prj1, tau_prj2, tau_prj);
 
-            // sinuisoidal trajectory. in the initial 2 seconds the amplitude linearly increases.
-            if (t_current > accel_duration){
-                amplitude_scaled = amplitude;
-            }
-            else {
-                amplitude_scaled = t_current / accel_duration * amplitude;
-            }
-            position_cmd[jnt_idx] = position_ref[jnt_idx] + amplitude_scaled * sin(omega * t_current);
+            jnt_pos_cmd[jnt_idx] = jnt_pos_ref[jnt_idx] + jnt_pos_i[n++];
 
             // send command
-            position_act.set_joint_positions(position_cmd);
+            position_act.set_joint_positions(jnt_pos_cmd);
             torque_pub.publish_joint_torques(tau_prj);
 
             // record time required
@@ -172,7 +218,6 @@ int main(int argc, char **argv)
             ROS_DEBUG_STREAM_THROTTLE(1, "force: " << force[0] << ", " << force[1] << ", " << force[2]);
             ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
             ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
-            t_current = (tend - tstart).toSec();
             rate.sleep();
         }
 
@@ -181,7 +226,7 @@ int main(int argc, char **argv)
         std::cin >> cont;
         if (cont == "n"){
             std::cout << "Quitting!" << std::endl;
-            break;
+            ros::shutdown();
         }
     }
 

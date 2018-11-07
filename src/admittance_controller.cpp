@@ -30,10 +30,20 @@ void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
     viewer->main(showgui);
 }
 
+void print_dVector(dVector x, std::string name){
+    std::cout << name << ": ";
+    for(int i=0; i < x.size(); ++i){
+        std::cout << x[i] << ", ";
+    }
+    std::cout << std::endl;
+}
+
+
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "joint_admittance_controller");
     ros::NodeHandle node_handle("~");
+
     // general parameters
     std::string name_space = "denso";
     std::string ft_topic = "/netft/raw";
@@ -42,6 +52,7 @@ int main(int argc, char **argv)
     std::string viewername = "qtosg";
     std::string robotname = "denso_handle";
     std::string ftmanipname = "FTsensor";
+    ros::Rate rate(125);
 
     // FT sensor data acquisition setup via FTsensor handler
     // - define wrench filtering and
@@ -63,6 +74,7 @@ int main(int argc, char **argv)
     if (FT_debug){
         ft_handler.set_debug(node_handle);
     }
+
     // Robot Joint Position data acquisition (from ros control) via JointPositionHandler
     std::vector<double> jnt_pos_ref;
     node_handle.getParam("joint_pos_ref", jnt_pos_ref);
@@ -85,54 +97,75 @@ int main(int argc, char **argv)
 		    << jnt_pos_init[2] << ", " << jnt_pos_init[3] << ", "
 		    << jnt_pos_init[4] << ", " << jnt_pos_init[5]);
 
-    // Insanitate Joint Controllers
-    std::vector<std::shared_ptr<LTI > > admittance_filters;
-    for (int i = 0; i < 6; ++i) {
-        std::string jnt_filter_path, jnt_filter_type;
-        node_handle.getParam("j" + std::to_string(i + 1) + "/filter", jnt_filter_path);
-        jnt_filter_type = jnt_filter_path.substr(1, 8);
-        if (jnt_filter_type == "iir_siso"){
-            dVector cof_a, cof_b;
-            if (not node_handle.getParam(jnt_filter_path + "/b", cof_b)){
-                ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
-                ros::shutdown();
-            }
-
-            node_handle.getParam(jnt_filter_path + "/a", cof_a);
-            admittance_filters.push_back(std::make_shared<DiscreteTimeFilter>(cof_b, cof_a, jnt_pos_init[i] - jnt_pos_ref[i]));
-        }
-        else if (jnt_filter_type == "fir_siso") {
-            int T, nu, ny;
-            dVector L, MB2;
-            if (not node_handle.getParam(jnt_filter_path + "/T", T)){
-                ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
-                ros::shutdown();
-            }
-            node_handle.getParam(jnt_filter_path + "/nu", nu);
-            node_handle.getParam(jnt_filter_path + "/ny", ny);
-            node_handle.getParam(jnt_filter_path + "/L", L);
-            node_handle.getParam(jnt_filter_path + "/MB2", MB2);
-            admittance_filters.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, dVector{jnt_pos_init[i] - jnt_pos_ref[i]}));
-        }
-        else {
-            throw std::invalid_argument("Unknown filter kind");
-        }
-    }
-
     // Publisher for torque inputs to the controller (for logging/debugging purposes)
     ExternalTorquePublisher torque_pub(name_space, node_handle);
 
     // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
     OpenRAVE::RaveInitialize(true); // start openrave core
-    OpenRAVE::EnvironmentBasePtr penv = OpenRAVE::RaveCreateEnvironment(); // create the main environment
+    OpenRAVE::EnvironmentBasePtr env_ptr = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-    boost::thread thviewer(boost::bind(SetViewer,penv,viewername));
-    penv->Load(scenefilename); // load the scene
-    OpenRAVE::RobotBasePtr robot;
-    robot = penv->GetRobot(robotname);
-    robot->SetActiveManipulator(ftmanipname);
-    auto manip = robot->GetActiveManipulator();
-    ros::Rate rate(125);
+    boost::thread thviewer(boost::bind(SetViewer,env_ptr,viewername));  // create viewer
+    env_ptr->Load(scenefilename); // load the scene
+    OpenRAVE::RobotBasePtr robot_ptr;
+    robot_ptr = env_ptr->GetRobot(robotname);
+    robot_ptr->SetActiveManipulator(ftmanipname);
+    auto manip_ptr = robot_ptr->GetActiveManipulator();
+
+    // Interaction controller selection: depending on the loaded parameter, difference "blocks" will
+    // be initialized. This is where most of the work should be done: creating custom classes for the
+    // task at hand and initializing them. The control loop is actually trivial.
+    std::string controller_id, controller_type;
+    if (!node_handle.getParam("/active_controller", controller_id)){
+        ROS_ERROR_STREAM("No active controller found. Check if parameters have been loaded to parameter sever!");
+        ros::shutdown();
+    }
+    if (!node_handle.getParam("/" + controller_id + "/type", controller_type)){
+        ROS_ERROR_STREAM("Unable to decide controller type. Check if parameters have been loaded to parameter sever!");
+        ros::shutdown();
+    }
+
+    std::shared_ptr<LTI> force_map_ptr;
+    std::shared_ptr<LTI> controller_ptr;
+    std::shared_ptr<LTI> position_map_ptr;
+    // Initialize the controllers for a given task
+    if (controller_type == "joint_admittance"){
+        force_map_ptr = std::make_shared<InfInteraction::JointTorqueFromWrenchProjector>(robot_ptr);
+        // Init Joint Controllers, then throw 'em in a Controller Collection
+        std::vector<std::shared_ptr<LTI > > jnt_controllers;
+        for (int i = 0; i < 6; ++i) {
+            std::string jnt_filter_path, jnt_filter_type;
+            node_handle.getParam("j" + std::to_string(i + 1) + "/filter", jnt_filter_path);
+            jnt_filter_type = jnt_filter_path.substr(1, 8);
+            if (jnt_filter_type == "iir_siso"){
+                dVector cof_a, cof_b;
+                if (not node_handle.getParam(jnt_filter_path + "/b", cof_b)){
+                    ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
+                    ros::shutdown();
+                }
+                node_handle.getParam(jnt_filter_path + "/a", cof_a);
+                jnt_controllers.push_back(std::make_shared<DiscreteTimeFilter>(cof_b, cof_a, jnt_pos_init[i] - jnt_pos_ref[i]));
+            }
+            else if (jnt_filter_type == "fir_siso") {
+                int T, nu, ny;
+                dVector L, MB2;
+                if (not node_handle.getParam(jnt_filter_path + "/T", T)){
+                    ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
+                    ros::shutdown();
+                }
+                node_handle.getParam(jnt_filter_path + "/nu", nu);
+                node_handle.getParam(jnt_filter_path + "/ny", ny);
+                node_handle.getParam(jnt_filter_path + "/L", L);
+                node_handle.getParam(jnt_filter_path + "/MB2", MB2);
+                jnt_controllers.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, dVector{jnt_pos_init[i] - jnt_pos_ref[i]}));
+            }
+            else {
+                throw std::invalid_argument("Unknown filter kind");
+            }
+        }
+        controller_ptr = std::make_shared<InfInteraction::ControllerCollection>(jnt_controllers);
+        // inverse kinematic: simply add the reference joint position to each position output to obtain the joint command.
+        position_map_ptr = std::make_shared<InfInteraction::SimpleOffset>(jnt_pos_ref);
+    }
 
     // temp variable
     std::vector<double> position_cmd = {0, 0, 0, 0, 0, 0};
@@ -149,16 +182,17 @@ int main(int argc, char **argv)
         // call all callbacks
         ros::spinOnce();
 
+
         // retrieve the latest wrench measurement, offseted and filtered
         ft_handler.get_latest_wrench(force, torque);
-        OpenRAVE::RaveVector<double> rave_force(force[0], force[1], force[2]);
-        OpenRAVE::RaveVector<double> rave_torque(torque[0], torque[1], torque[2]);
 
         // transform offset wrench to joint torque
-        robot->SetActiveDOFValues(jnt_pos_handler.get_latest_jnt_position());
-        manip->CalculateJacobian(jacobian);
-        manip->CalculateAngularVelocityJacobian(jacobian_rot);
-        T_wee = manip->GetEndEffectorTransform();
+        OpenRAVE::RaveVector<double> rave_force(force[0], force[1], force[2]);
+        OpenRAVE::RaveVector<double> rave_torque(torque[0], torque[1], torque[2]);
+        robot_ptr->SetActiveDOFValues(jnt_pos_handler.get_latest_jnt_position());
+        manip_ptr->CalculateJacobian(jacobian);
+        manip_ptr->CalculateAngularVelocityJacobian(jacobian_rot);
+        T_wee = manip_ptr->GetEndEffectorTransform();
         auto rave_force_ = T_wee.rotate(rave_force);
         auto rave_torque_ = T_wee.rotate(rave_torque);
         force[0] = rave_force_.x; force[1] = rave_force_.y; force[2] = rave_force_.z;
@@ -170,11 +204,14 @@ int main(int argc, char **argv)
         matrix_mult(jacobian_rot_T, torque, tau_prj2);
         matrix_add(tau_prj1, tau_prj2, tau_prj);
 
-        // Compute joint actuation commands from projected joint torque
-        for (int i = 0; i < 6; ++i) {
-            dVector y_ = admittance_filters[i]->compute(dVector {tau_prj[i]});
-            position_cmd[i] = jnt_pos_ref[i] + y_[0];
-        }
+        // new pipeline
+        ft_handler.get_latest_wrench(wrench);
+        force_map_ptr->set_state(jnt_pos_handler.get_latest_jnt_position());
+        auto tau0 = force_map_ptr->compute(wrench);
+        auto new_un = controller_ptr->compute(tau0);
+        position_cmd = position_map_ptr->compute(new_un);
+
+        print_dVector(position_cmd, "idx=" + std::to_string(step_idx));
 
         // Send joint position command
         jnt_pos_act.set_joint_positions(position_cmd);
@@ -186,20 +223,20 @@ int main(int argc, char **argv)
 
         // report, clean up then sleep
         ROS_DEBUG_STREAM_THROTTLE(1, "force: " << force[0] << ", " << force[1] << ", " << force[2]);
-        ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
-        ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
-        // log data
-//        ROS_DEBUG_STREAM("tau: " << step_idx << ","
-//                                 << tau_prj[0] << "," << tau_prj[1] << "," << tau_prj[2] << ","
-//                                 << tau_prj[2] << "," << tau_prj[4] << "," << tau_prj[5]);
-//        ROS_DEBUG_STREAM("cmd: " << step_idx << ","
-//                                 << position_cmd[0] << "," << position_cmd[1] << "," << position_cmd[2] << ","
-//                                 << position_cmd[2] << "," << position_cmd[4] << "," << position_cmd[5]);
-        step_idx = (step_idx + 1) % 2147483640;
-        rate.sleep();
+	ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
+	ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
+	// log data
+	//        ROS_DEBUG_STREAM("tau: " << step_idx << ","
+	//                                 << tau_prj[0] << "," << tau_prj[1] << "," << tau_prj[2] << ","
+	//                                 << tau_prj[2] << "," << tau_prj[4] << "," << tau_prj[5]);
+	//        ROS_DEBUG_STREAM("cmd: " << step_idx << ","
+	//                                 << position_cmd[0] << "," << position_cmd[1] << "," << position_cmd[2] << ","
+	//                                 << position_cmd[2] << "," << position_cmd[4] << "," << position_cmd[5]);
+	step_idx = (step_idx + 1) % 2147483640;
+	rate.sleep();
     }
 
-  return 0;
+    return 0;
 }
 
 
