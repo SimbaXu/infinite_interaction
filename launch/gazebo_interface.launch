@@ -4,7 +4,7 @@
 <launch>
 
   <arg name="robot_namespace"   default="denso" />
-  <arg name="robot_urdf"        default="denso_vs060_handle.xacro" />
+  <arg name="robot_urdf"        default="denso_ft_gripper.xacro" />
   <arg name="ftsensor_topic"   default="/netft/raw" />
   <arg name="ftsensor_rate"        default="1000" />
   <arg name="controllers_config"     default="config_gazebo_controllers.yaml" />

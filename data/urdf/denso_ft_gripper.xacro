@@ -1,5 +1,9 @@
 <?xml version="1.0"?>
+
+<!-- Description: This xacro file contains the model of the Denso robot equipped with -->
+<!-- both the FT sensor and the gripper. -->
 <robot name="denso_vs060" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Robot base model -->
   <xacro:include filename="$(find denso_description)/urdf/denso_vs060_robot.urdf.xacro" />
   <xacro:include filename="$(find netft_description)/urdf/ati_gamma.xacro" />
   <xacro:include filename="$(find robotiq_description)/urdf/robotiq_85_gripper.urdf.xacro" />
@@ -59,7 +63,7 @@
        <child link="ft_sensor"/>
     </joint>
 
-  <!-- ATI FT sensor upper plate -->
+  <!-- ATI coupler: upperplate -->
   <link name="gamma_upperplate">
     <visual>
       <origin xyz="0 0 -0.015" rpy="0 0 0" />
@@ -107,7 +111,6 @@
     </inertial>
   </link>
   <joint name="robotiq_coupler_joint" type="fixed">
-    <!-- <origin xyz="0 0 0.0" rpy="0 0 ${-pi/2.0}" /> -->
     <origin xyz="0 0 0.0" rpy="0 0 0" />
     <parent link="gamma_upperplate"/>
     <child link="robotiq_coupler"/>
@@ -118,14 +121,30 @@
     <material>Gazebo/FlatBlack</material>
   </gazebo>
   
-  <!-- Equivalent to the OpenRAVE manipulator denso_robotiq_85_gripper -->
   <xacro:robotiq_85_gripper prefix="" parent="robotiq_coupler" >
     <origin xyz="0 0 0.004" rpy="0 ${-pi/2} ${pi}"/>
   </xacro:robotiq_85_gripper>
+
+  <!-- Equivalent to the OpenRAVE manipulator denso_robotiq_85_gripper -->
   <link name="denso_robotiq_85_gripper" />
   <joint name="manipulator_dummy_joint" type="fixed">
     <origin xyz="0 0 0.1441" rpy="0 0 0" />
     <parent link="robotiq_coupler"/>
     <child link="denso_robotiq_85_gripper"/>
   </joint>
+
+  <!-- Gazebo FT sensor plugin -->
+  <gazebo reference="ft_joint">
+    <disableFixedJointLumping>true</disableFixedJointLumping>
+    <provideFeedback>true</provideFeedback>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="ft_sensor_plugin" filename="libgazebo_ros_ft_sensor.so">
+      <updateRate>$(arg ftsensor_rate)</updateRate>
+      <topicName>$(arg ftsensor_topic)</topicName>
+      <gaussianNoise>0.0</gaussianNoise>
+      <jointName>ft_joint</jointName>
+    </plugin>
+  </gazebo>
 </robot>

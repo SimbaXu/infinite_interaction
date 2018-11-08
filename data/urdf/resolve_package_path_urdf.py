@@ -1,3 +1,11 @@
+"""This script processes a ros urdf file so that all paths specified
+using ros package:// syntax are resolved properly, allowing one to use
+the urdf file with pybullet directly.
+
+Usage
+  python resolve_package_path_urdf.py [filename]
+
+"""
 import sys
 import rospkg
 import re
