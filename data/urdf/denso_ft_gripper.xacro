@@ -57,94 +57,99 @@
                                                   izz="1.076e-4" />
       </inertial>
     </link>
-    <joint name="ft_sensor_joint" type="fixed">
+
+    <joint name="ft_joint" type="fixed">
        <origin xyz="0 0 0.0386" rpy="0 0 0" />
        <parent link="gamma_lowerplate"/>
        <child link="ft_sensor"/>
     </joint>
+    <!-- ATI coupler: upperplate -->
+    <link name="gamma_upperplate">
+      <visual>
+    	<origin xyz="0 0 -0.015" rpy="0 0 0" />
+    	<geometry>
+    	  <mesh filename="package://ftsensorless/robots/meshes/ati_gamma/gamma_robotiq.stl" />
+    	</geometry>
+    	<material name="flat_black">
+    	  <color rgba="${105.0/255} ${105.0/255} ${105.9/255} 1.0" />
+    	</material>
+      </visual>
+      <collision>
+    	<geometry>
+    	  <mesh filename="package://ftsensorless/robots/meshes/ati_gamma/gamma_robotiq.stl" />
+    	</geometry>
+      </collision>
+    </link>
 
-  <!-- ATI coupler: upperplate -->
-  <link name="gamma_upperplate">
-    <visual>
-      <origin xyz="0 0 -0.015" rpy="0 0 0" />
-      <geometry>
-	<mesh filename="package://ftsensorless/robots/meshes/ati_gamma/gamma_robotiq.stl" />
-      </geometry>
-      <material name="flat_black">
-  	<color rgba="${105.0/255} ${105.0/255} ${105.9/255} 1.0" />
-      </material>
-    </visual>
-    <collision>
-      <geometry>
-        <mesh filename="package://ftsensorless/robots/meshes/ati_gamma/gamma_robotiq.stl" />
-      </geometry>
-    </collision>
-  </link>
+    <joint name="joint_gamma_robotiq" type="fixed">
+      <origin xyz="0 0 0.015" rpy="0 0 0" />
+      <parent link="ft_sensor"/>
+      <child link="gamma_upperplate"/>
+    </joint>
+    
+    <!-- Robotiq Coupler -->
+    <!-- The height added by this coupler is 8mm -->
+    <!-- Its reference frame is at the middle: 4mm -->
+    <link name="robotiq_coupler">
+      <visual>
+    	<geometry>
+    	  <mesh filename="package://robotiq_description/meshes/robotiq_85_coupler.stl" />
+    	</geometry>
+    	<material name="flat_black"/>
+      </visual>
+      <collision>
+    	<geometry>
+    	  <mesh filename="package://robotiq_description/meshes/robotiq_85_coupler.stl" />
+    	</geometry>
+      </collision>
+      <inertial>
+    	<origin xyz="2.073e-05   1.45286e-03  -1.1049e-03" rpy="0 0 0" />
+    	<mass value="0.168" />
+    	<inertia  ixx="6.69695624e-05"  ixy="5.21511788e-09"   ixz="-2.74383009e-08"
+    		  iyy="7.85088161e-05"    iyz="5.41105193e-07"
+    		  izz="1.41819717e-04" />
+      </inertial>
+    </link>
+    <joint name="robotiq_coupler_joint" type="fixed">
+      <origin xyz="0 0 0.0" rpy="0 0 0" />
+      <parent link="gamma_upperplate"/>
+      <child link="robotiq_coupler"/>
+    </joint>
+    <gazebo reference="robotiq_coupler">
+      <mu1>0.9</mu1>
+      <mu2>0.9</mu2>
+      <material>Gazebo/FlatBlack</material>
+    </gazebo>
+    
+    <xacro:robotiq_85_gripper prefix="" parent="robotiq_coupler" >
+      <origin xyz="0 0 0.004" rpy="0 ${-pi/2} ${pi}"/>
+    </xacro:robotiq_85_gripper>
 
-  <joint name="joint_gamma_robotiq" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
-    <parent link="ft_sensor"/>
-    <child link="gamma_upperplate"/>
-  </joint>
-  
-  <!-- Robotiq Coupler -->
-  <!-- The height added by this coupler is 8mm -->
-  <!-- Its reference frame is at the middle: 4mm -->
-  <link name="robotiq_coupler">
-    <visual>
-      <geometry>
-        <mesh filename="package://robotiq_description/meshes/robotiq_85_coupler.stl" />
-      </geometry>
-      <material name="flat_black"/>
-    </visual>
-    <collision>
-      <geometry>
-        <mesh filename="package://robotiq_description/meshes/robotiq_85_coupler.stl" />
-      </geometry>
-    </collision>
-    <inertial>
-      <origin xyz="2.073e-05   1.45286e-03  -1.1049e-03" rpy="0 0 0" />
-      <mass value="0.168" />
-      <inertia  ixx="6.69695624e-05"  ixy="5.21511788e-09"   ixz="-2.74383009e-08"
-                                      iyy="7.85088161e-05"    iyz="5.41105193e-07"
-                                                              izz="1.41819717e-04" />
-    </inertial>
-  </link>
-  <joint name="robotiq_coupler_joint" type="fixed">
-    <origin xyz="0 0 0.0" rpy="0 0 0" />
-    <parent link="gamma_upperplate"/>
-    <child link="robotiq_coupler"/>
-  </joint>
-  <gazebo reference="robotiq_coupler">
-    <mu1>0.9</mu1>
-    <mu2>0.9</mu2>
-    <material>Gazebo/FlatBlack</material>
-  </gazebo>
-  
-  <xacro:robotiq_85_gripper prefix="" parent="robotiq_coupler" >
-    <origin xyz="0 0 0.004" rpy="0 ${-pi/2} ${pi}"/>
-  </xacro:robotiq_85_gripper>
+    <!-- Equivalent to the OpenRAVE manipulator denso_robotiq_85_gripper -->
+    <link name="denso_robotiq_85_gripper" />
+    <joint name="manipulator_dummy_joint" type="fixed">
+      <origin xyz="0 0 0.1441" rpy="0 0 0" />
+      <parent link="robotiq_coupler"/>
+      <child link="denso_robotiq_85_gripper"/>
+    </joint>
 
-  <!-- Equivalent to the OpenRAVE manipulator denso_robotiq_85_gripper -->
-  <link name="denso_robotiq_85_gripper" />
-  <joint name="manipulator_dummy_joint" type="fixed">
-    <origin xyz="0 0 0.1441" rpy="0 0 0" />
-    <parent link="robotiq_coupler"/>
-    <child link="denso_robotiq_85_gripper"/>
-  </joint>
+    <!-- Gazebo FT sensor plugin -->
+    <!-- NOTE: Cant' disable lumping for any other joints without breaking -->
+    <!-- Gazebo loading. Don't really understand why. It does not' matter -->
+    <!-- anyhow since we do not use gazebo to do physics simulation. -->
+    <gazebo reference="joint_denso_gamma">
+      <disableFixedJointLumping>true</disableFixedJointLumping>
+      <provideFeedback>true</provideFeedback>
+    </gazebo>
+   
+    <gazebo>
+      <plugin name="ft_sensor_plugin" filename="libgazebo_ros_ft_sensor.so">
+	<updateRate>$(arg ftsensor_rate)</updateRate>
+	<topicName>$(arg ftsensor_topic)</topicName>
+	<gaussianNoise>0.0</gaussianNoise>
+	<jointName>joint_denso_gamma</jointName>
+      </plugin>
+    </gazebo>
 
-  <!-- Gazebo FT sensor plugin -->
-  <gazebo reference="ft_joint">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <provideFeedback>true</provideFeedback>
-  </gazebo>
 
-  <gazebo>
-    <plugin name="ft_sensor_plugin" filename="libgazebo_ros_ft_sensor.so">
-      <updateRate>$(arg ftsensor_rate)</updateRate>
-      <topicName>$(arg ftsensor_topic)</topicName>
-      <gaussianNoise>0.0</gaussianNoise>
-      <jointName>ft_joint</jointName>
-    </plugin>
-  </gazebo>
-</robot>
+  </robot>
