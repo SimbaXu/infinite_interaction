@@ -48,11 +48,27 @@ int main(int argc, char **argv)
     std::string name_space = "denso";
     std::string ft_topic = "/netft/raw";
     std::string jnt_state_topic = "/denso/joint_states";
-    std::string scenefilename = "robots/denso_handle.robot.xml";
     std::string viewername = "qtosg";
-    std::string robotname = "denso_handle";
-    std::string ftmanipname = "FTsensor";
+    std::string scenefilename, robot_name, manip_name, ft_name;
+    if (!node_handle.getParam("/scene_path", scenefilename)){
+        ROS_ERROR_STREAM("Unable to find [/scene_path]. Have you loaded all parameters?");
+        ros::shutdown();
+    }
+    if (!node_handle.getParam("/robot_name", robot_name)){
+        ROS_ERROR_STREAM("Unable to find [/robot_name]. Have you loaded all parameters?");
+        ros::shutdown();
+    }
+    if (!node_handle.getParam("/manip_frame", manip_name)){
+        ROS_ERROR_STREAM("Unable to find [/manip_name]. Have you loaded all parameters?");
+        ros::shutdown();
+    }
+     if (!node_handle.getParam("/ftsensor_frame", ft_name)){
+        ROS_ERROR_STREAM("Unable to find [/ftsensor_name]. Have you loaded all parameters?");
+        ros::shutdown();
+    }
     ros::Rate rate(125);
+    bool viewer;
+    node_handle.param("/viewer", viewer, true);
 
     // FT sensor data acquisition setup via FTsensor handler
     // - define wrench filtering and
@@ -104,11 +120,12 @@ int main(int argc, char **argv)
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr env_ptr = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-    boost::thread thviewer(boost::bind(SetViewer,env_ptr,viewername));  // create viewer
+    if (viewer) boost::thread thviewer(boost::bind(SetViewer,env_ptr,viewername));  // create viewer
     env_ptr->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot_ptr;
-    robot_ptr = env_ptr->GetRobot(robotname);
-    robot_ptr->SetActiveManipulator(ftmanipname);
+    robot_ptr = env_ptr->GetRobot(robot_name);
+    robot_ptr->SetActiveManipulator(ft_name);
+    robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
     auto manip_ptr = robot_ptr->GetActiveManipulator();
 
     // Interaction controller selection: depending on the loaded parameter, difference "blocks" will
@@ -129,7 +146,7 @@ int main(int argc, char **argv)
     std::shared_ptr<LTI> position_map_ptr;
     // Initialize the controllers for a given task
     if (controller_type == "joint_admittance"){
-        force_map_ptr = std::make_shared<InfInteraction::JointTorqueFromWrenchProjector>(robot_ptr);
+        force_map_ptr = std::make_shared<InfInteraction::JointTorqueFromWrenchProjector>(robot_ptr, ft_name);
         // Init Joint Controllers, then throw 'em in a Controller Collection
         std::vector<std::shared_ptr<LTI > > jnt_controllers;
         for (int i = 0; i < 6; ++i) {
@@ -211,8 +228,6 @@ int main(int argc, char **argv)
         auto new_un = controller_ptr->compute(tau0);
         position_cmd = position_map_ptr->compute(new_un);
 
-        print_dVector(position_cmd, "idx=" + std::to_string(step_idx));
-
         // Send joint position command
         jnt_pos_act.set_joint_positions(position_cmd);
         torque_pub.publish_joint_torques(tau_prj);
@@ -223,17 +238,17 @@ int main(int argc, char **argv)
 
         // report, clean up then sleep
         ROS_DEBUG_STREAM_THROTTLE(1, "force: " << force[0] << ", " << force[1] << ", " << force[2]);
-	ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
-	ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
-	// log data
-	//        ROS_DEBUG_STREAM("tau: " << step_idx << ","
-	//                                 << tau_prj[0] << "," << tau_prj[1] << "," << tau_prj[2] << ","
-	//                                 << tau_prj[2] << "," << tau_prj[4] << "," << tau_prj[5]);
-	//        ROS_DEBUG_STREAM("cmd: " << step_idx << ","
-	//                                 << position_cmd[0] << "," << position_cmd[1] << "," << position_cmd[2] << ","
-	//                                 << position_cmd[2] << "," << position_cmd[4] << "," << position_cmd[5]);
-	step_idx = (step_idx + 1) % 2147483640;
-	rate.sleep();
+        ROS_DEBUG_STREAM_THROTTLE(1, "torque: " << torque[0] << ", " << torque[1] << ", " << torque[2]);
+        ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
+        // log data
+        //        ROS_DEBUG_STREAM("tau: " << step_idx << ","
+        //                                 << tau_prj[0] << "," << tau_prj[1] << "," << tau_prj[2] << ","
+        //                                 << tau_prj[2] << "," << tau_prj[4] << "," << tau_prj[5]);
+        //        ROS_DEBUG_STREAM("cmd: " << step_idx << ","
+        //                                 << position_cmd[0] << "," << position_cmd[1] << "," << position_cmd[2] << ","
+        //                                 << position_cmd[2] << "," << position_cmd[4] << "," << position_cmd[5]);
+        step_idx = (step_idx + 1) % 2147483640;
+        rate.sleep();
     }
 
     return 0;

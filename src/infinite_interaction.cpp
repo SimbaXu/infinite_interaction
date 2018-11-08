@@ -8,8 +8,15 @@
 
 
 namespace InfInteraction {
-    JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_) : robot_ptr( robot_ptr_)
+    JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame)
+            : robot_ptr(robot_ptr_)
     {
+
+        ft_sensor_ptr = robot_ptr->GetManipulator(ft_sensor_frame);
+        if (!ft_sensor_ptr){
+            ROS_ERROR_STREAM("Unable to find ft_sensor_frame [" + ft_sensor_frame + "]");
+            ros::shutdown();
+        }
         force.resize(3);
         torque.resize(3);
         tau1.resize(6);
@@ -17,9 +24,11 @@ namespace InfInteraction {
         tau.resize(6);
     }
     dVector JointTorqueFromWrenchProjector::compute(const dVector &u_n) {
-        robot_ptr->GetActiveManipulator()->CalculateJacobian(jacobian);
-        robot_ptr->GetActiveManipulator()->CalculateAngularVelocityJacobian(jacobian_rot);
-        T_wee = robot_ptr->GetActiveManipulator()->GetEndEffectorTransform();
+        // Jacobians are (3x6) matrix despite the robot having 7 dof because
+        // there are only 6 joints from the base link to the ft sensor.
+        ft_sensor_ptr->CalculateJacobian(jacobian);
+        ft_sensor_ptr->CalculateAngularVelocityJacobian(jacobian_rot);
+        T_wee = ft_sensor_ptr->GetEndEffectorTransform();
 
         // transform measured force/torque to world frame
         temp_vec.x = u_n[0]; temp_vec.y = u_n[1]; temp_vec.z = u_n[2];

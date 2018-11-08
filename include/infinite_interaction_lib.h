@@ -42,13 +42,14 @@ namespace InfInteraction{
 
 class JointTorqueFromWrenchProjector: public LTI {
     OpenRAVE::RobotBasePtr robot_ptr;
+    OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr;
     dVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
             force, torque,  // input force, torque
             tau1, tau2, tau; // projected torque
     OpenRAVE::Transform T_wee;
     OpenRAVE::RaveVector<double> rave_force, rave_torque, temp_vec;
 public:
-    JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_);
+    JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
     dVector compute(const dVector & u_n);
     void set_state(const dVector & x_n);
 };

@@ -1,8 +1,25 @@
 # This parameter selects the active controller
 active_controller: joint_admittance_controller
 
-# The below dictionary (admittance_control) contain parameters of the
-# joint admittance controller.
+# common parameters
+scene_path: robots/denso_ft_sensor_gripper.robot.xml
+robot_name: denso_ft_sensor_gripper
+manip_frame: gripper
+ftsensor_frame: ft_sensor
+
+cartesian_3D_controller:
+  type: cartesian_3D
+  end_effector: temp
+  pos_ref: [0.4, 0, 0.5]  # zero position
+  # orientation of the end-effector. quaternion follows openrave
+  # convention: [w x y z].
+  quaternion: [0.70710678, 0, 0.70710678, 0]  
+  
+  ft_sensor_ref: [1, 2, 3]
+  ft_sensor_filter: /iir_siso/unit
+
+# The below dictionary (joint_admittance_control) defines controller:
+# joint_admittance_controller
 joint_admittance_controller:
   type: joint_admittance
 
@@ -12,6 +29,7 @@ joint_admittance_controller:
 
   # sensor reading (wrench) will be substracted with this value before processed.
   ft_sensor_ref: [20.71, -21.51, 21.38, 0.944, -1.008, -0.539]
+
   # filter to be applied to the inconming signal stream
   ft_sensor_filter: /iir_siso/unit
 
