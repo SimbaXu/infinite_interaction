@@ -40,6 +40,7 @@ public:
 
 namespace InfInteraction{
 
+// Project measured wrench to each joint torque.
 class JointTorqueFromWrenchProjector: public LTI {
     OpenRAVE::RobotBasePtr robot_ptr;
     OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr;
@@ -51,6 +52,16 @@ class JointTorqueFromWrenchProjector: public LTI {
 public:
     JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
     dVector compute(const dVector & u_n);
+    void set_state(const dVector & x_n);
+};
+
+
+// Project measured wrench to the Cartesian workspace
+class Wrench2CartForceProjector: public LTI {
+    OpenRAVE::Transform T_wee;
+public:
+    Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
+    dVector compute(const dVector & wrench);
     void set_state(const dVector & x_n);
 };
 
@@ -80,33 +91,63 @@ public:
 
 /*! Discrete-time MIMO FIR series+feedback (srfb) controller.
  *
- * The filter receives a stream of vector-valued input y[0], y[1], ...
- * and produces a stream of vector-valued output u[0], u[1], ...
+ * The FIRsrfb filter receives a stream of vector-valued input (y[0],
+ * y[1], ... ,y[T-1]) and produces a stream of vector-valued output
+ * (u[0], u[1], ... ,u[T-1])
  *
- * The input and output streams are stored in respectively in two
- * circular input and output banks ybank and ubank. New data is
- * added to the bank reversely. See below for an example
+ * NOTE: This controller has the form of a series+feedback with two FIR blocks:
+ *  y[n]                             u[n]
+ *     ---[L] ----o--------------------->
+ *               -|              |
+ *                \-----[MB2]----/
+ *
+ * The input and output streams are stored respectively in two
+ * circular input and output banks `ybank` and `ubank`. Both are
+ * attributes of the class. New data, which are u[n] and y[n], are
+ * appended to the banks reversely. Consider `ybank`:
  *
  * y[n][0], y[n][1], y[n][2], ..., y[1][0], y[1][1], y[1][2], y[0][0], y[0][1], y[0][2]
  *
- * The input bank ybank has length ny * T; the output bank has length nu * T.
- * This is in order for the banks to contain T periods of input output.
+ * The input bank `ybank` has length ny * T; the output bank has
+ * length nu * T, which are sufficient for T periods of inputs and
+ * outputs.
  *
- * Filter coefficient vector L has shape (L, ny, nu). Filter coefficient vector MB2 has shape (L, nu, nu).
+ * Filter coefficients vector L has shape (L, ny, nu) and filter
+ * coefficients vector MB2 has shape (L, nu, nu). Both are stored
+ * flatten in row-order.
  *
- * At each call to `compute`:
- *   1. an input y[n] is fed to the controller,
- *   2. yidx point to y[n-1][0],
+ * At the beginning of each call to `compute`:
+ *   1. an input y[n] is fed to the controller;
+ *   2. yidx point to y[n-1][0];
  *   3. uidx point to u[n-1][0].
- * Before the call terminates:
- *   1. an output u[n] is readied to be returned;
- *   2. yidx point to y[n][0],
+ * Before the call to `compute` terminates:
+ *   1. an output u[n] is to be returned;
+ *   2. yidx point to y[n][0];
  *   3. uidx point to u[n][0].
  *
- * u[n] is computed as follows:
+ * Input u[n] is computed using the following computations:
+ *
  *   alpha = L[0] * y[n] + ... + L[T - 1] * y[n - T + 1]
  *   beta = M[1] * u[n - 1] + ... + M[T - 1] * u[n - T + 1]
  *   u[n] = alpha - beta
+ * 
+ * It can be shown that the above computations are equivalent to the
+ * following equality:
+ *
+ *    L[0] * y[n] + ... + L[T - 1] * y[n - T + 1]
+ *  = u[n] + M[1] * u[n - 1] + ... + M[T - 1] * u[n - T + 1]
+ *
+ * This form can easily be adapted to implement decoupled (diagonal)
+ * control rules. As an example, consider the scalar control rule
+ *
+ *    u[n] / y[n] = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)
+ * 
+ * This rule can be implemented with the coefficients: L:=[b0, b1, b2], MB2:=:[0, a1, a2]
+ * 
+ * Suppose there are two dofs, and the input and output are both
+ * 2-vectors, one has instead the following coefficients:
+ * 
+ * L:=[b0 * I2, b1 * I2, b2 * I2] and MB2:=[0*I2, a1*I2, a2*I2]
  */
 class FIRsrfb: public LTI {
     unsigned int T, ny, nu, /*FIR banks shape*/
@@ -120,6 +161,7 @@ class FIRsrfb: public LTI {
     void init_filter(dVector uinit);
 
 public:
+    // initialize the filter with zero initial output
     FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_);
     // initialize the filter with initial outputs being uinit for all time steps
     FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_, dVector uinit);
@@ -185,6 +227,7 @@ public:
     void get_latest_wrench(dVector &force, dVector &torque);
     void get_latest_wrench(dVector &wrench);
     void set_debug(ros::NodeHandle &nh);
+    void set_wrench_offset(dVector wrench_offset_);
     void log_latest_wrench(const std_msgs::Header &);
 };
 class JointPositionHandler{
