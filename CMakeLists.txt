@@ -40,6 +40,7 @@ add_executable(joint_admittance_controller
 target_include_directories(joint_admittance_controller PUBLIC include)
 target_link_libraries(joint_admittance_controller
   ${catkin_LIBRARIES}
+  qpOASES
   # openrave dependencies
   ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
   ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}

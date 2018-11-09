@@ -136,9 +136,14 @@ namespace InfInteraction {
         //
         // NOTE: the following equality is every helpful:
         //   (dpos - J_trans dq)^2  = 0.5 dq.T (2 J^T J) dq - (2 J^T dpos) dq + dpos^T dpos
+        dVector dq;
 
 
-        return dVector();
+        dVector jnt_pos_cmd;
+        for(unsigned int i=0; i < 6; i ++){
+            jnt_pos_cmd.push_back(jnt_pos_current[i] + dq[i]);
+        }
+        return jnt_pos_cmd;
     }
     void CartPositionTracker::set_state(const dVector &jnt_pos_n) {
         jnt_pos_current = jnt_pos_n;
@@ -453,7 +458,7 @@ void matrix_add(std::vector<double> &x, std::vector<double> &y, std::vector<doub
     }
 }
 
-std::vector<double> mat_transpose(const std::vector<double>& M, unsigned int ncol){
+std::vector<double> mat_transpose(const std::vector<double>& M, int ncol){
     assert(M.size() % ncol == 0);
     std::vector<double> M_T (M.size());
     auto nrow = static_cast<unsigned int>(M.size() / ncol);
