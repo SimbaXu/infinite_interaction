@@ -46,7 +46,8 @@ class JointTorqueFromWrenchProjector: public LTI {
     OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr;
     dVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
             force, torque,  // input force, torque
-            tau1, tau2, tau; // projected torque
+            tau1, tau2, tau, // projected torque
+            jnt_pos_current;  // current joint position
     OpenRAVE::Transform T_wee;
     OpenRAVE::RaveVector<double> rave_force, rave_torque, temp_vec;
 public:
@@ -56,7 +57,13 @@ public:
 };
 
 
-// Project measured wrench to the Cartesian workspace
+// TODO: Current the projector assume that the robot's end-effector pose remains at the initial pose.
+// This assumtption is not true for a more general class of problem. (But true for the Cartersian admittance
+// task I am working on.
+
+/*! Project measured external acting wrench to Cartesian workspace
+ *
+ */
 class Wrench2CartForceProjector: public LTI {
     OpenRAVE::Transform T_wee;
 public:
@@ -91,12 +98,17 @@ public:
 /*! Cartesian Position Tracker
  *
  * Compute Joint Position Command to track a given position pos[n] while keeping the orientation fixed at the
- * initial value quat_init.
- *
+ * initial value quat_init. At each iteration, the robot's position is set to jnt_pos_current. Therefore, for
+ * applications in which the robot moves, which basically are every applications, users should call set_state
+ * and update jnt_pos_current before calling compute.
  */
  class CartPositionTracker: public LTI {
-     dVector jnt_pos_current,  /* Current robot joint position */
-             quat_init; /* Initial orientation */
+     dVector jnt_pos_current  /* Current robot joint position */ ;
+     OpenRAVE::RaveVector<OpenRAVE::dReal>
+             quat_init, /*Initial orientation*/
+             pos_init /*Initial position*/ ;
+     OpenRAVE::RobotBasePtr robot_ptr;
+     OpenRAVE::RobotBase::ManipulatorPtr manip_ptr;
  public:
      CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init);
      dVector compute(const dVector & pos_n);

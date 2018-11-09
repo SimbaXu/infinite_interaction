@@ -6,7 +6,7 @@
   <!-- Load `super`: the controller in testing. Note: to use this controller, change active controller for J3 in admittance_params.yaml to fir_siso/super -->
   <rosparam command="load" file="$(find infinite_interaction)/config/super.yaml"/>
   <rosparam>
-    viewer: true
+    viewer: false
     joint_admittance_controller:
         debug: true
     <!-- if true, turn on debug mode; additional

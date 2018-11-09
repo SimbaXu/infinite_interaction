@@ -24,6 +24,9 @@ namespace InfInteraction {
         tau.resize(6);
     }
     dVector JointTorqueFromWrenchProjector::compute(const dVector &u_n) {
+        // lock environment, then change robot dof
+        OpenRAVE::EnvironmentMutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
+        robot_ptr->SetActiveDOFValues(jnt_pos_current);
         // Jacobians are (3x6) matrix despite the robot having 7 dof because
         // there are only 6 joints from the base link to the ft sensor.
         ft_sensor_ptr->CalculateJacobian(jacobian);
@@ -47,7 +50,7 @@ namespace InfInteraction {
         return tau;
     }
     void JointTorqueFromWrenchProjector::set_state(const dVector &x_n) {
-        robot_ptr->SetActiveDOFValues(x_n);
+        jnt_pos_current = x_n;
     }
 
     // ControllerCollection
@@ -94,6 +97,51 @@ namespace InfInteraction {
     }
     void Wrench2CartForceProjector::set_state(const dVector &x_n) {
         // Do nothing
+    }
+
+    CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame,
+                                             dVector jnt_pos_init): robot_ptr(robot_ptr_), jnt_pos_current(jnt_pos_init) {
+        // lock
+        OpenRAVE::EnvironmentMutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
+        robot_ptr_->SetActiveDOFValues(jnt_pos_current);
+
+        manip_ptr = robot_ptr->GetManipulator(manip_frame);
+        if(!manip_ptr){
+            ROS_ERROR_STREAM("Manipulator [" << manip_frame << "] not found!");
+            ros::shutdown();
+        }
+        else {
+            OpenRAVE::Transform T_wee = manip_ptr->GetTransform();
+            quat_init = T_wee.rot;
+            pos_init = T_wee.trans;
+        }
+    }
+    dVector CartPositionTracker::compute(const dVector &pos_n) {
+        // lock
+        OpenRAVE::EnvironmentMutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
+        robot_ptr->SetActiveDOFValues(jnt_pos_current);
+
+        // get current position and quaternion
+        OpenRAVE::Transform T_wee_cur = manip_ptr->GetTransform();
+        auto dpos = T_wee_cur.trans - pos_init;
+        auto dquat = T_wee_cur.rot - quat_init;
+        dVector J_trans, J_rot;
+        manip_ptr->CalculateJacobian(J_trans);
+        manip_ptr->CalculateRotationJacobian(J_rot);
+
+        // Solve an optimization to find the next best action:
+        // min (dpos - J_trans dq)^2 + (dquat - J_rot dq) ^ 2 + gam * dq^2 (for regularization)
+        // s.t.    dqmin <= dq <= dqmax
+        //         qmin - q_cur <= dq <= qmax - q_cur
+        //
+        // NOTE: the following equality is every helpful:
+        //   (dpos - J_trans dq)^2  = 0.5 dq.T (2 J^T J) dq - (2 J^T dpos) dq + dpos^T dpos
+
+
+        return dVector();
+    }
+    void CartPositionTracker::set_state(const dVector &jnt_pos_n) {
+        jnt_pos_current = jnt_pos_n;
     }
 }
 

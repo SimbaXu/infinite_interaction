@@ -14,7 +14,6 @@
 using std::cout;
 
 
-
 void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 {
     OpenRAVE::ViewerBasePtr viewer = RaveCreateViewer(penv,viewername);

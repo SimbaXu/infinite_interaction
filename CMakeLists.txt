@@ -31,9 +31,6 @@ include_directories(
 catkin_package()
 
 
-# infintie_interaction_library (library)
-#add_library(infinite_interaction_lib src/infinite_interaction.cpp)
-#target_include_directories(infinite_interaction_lib PUBLIC include)
 
 # admittance controller: (main program)
 add_executable(joint_admittance_controller

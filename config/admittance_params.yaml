@@ -1,22 +1,23 @@
 # This parameter selects the active controller
 active_controller: joint_admittance_controller
 
-# common parameters
+# common parameters specific to the robot
 scene_path: robots/denso_ft_sensor_gripper.robot.xml
 robot_name: denso_ft_sensor_gripper
 manip_frame: gripper
 ftsensor_frame: ft_sensor
 
 cartesian_3D_controller:
-  type: cartesian_3D
-  end_effector: temp
-  pos_ref: [0.4, 0, 0.5]  # zero position
-  # orientation of the end-effector. quaternion follows openrave
-  # convention: [w x y z].
-  quaternion: [0.70710678, 0, 0.70710678, 0]  
-  
-  ft_sensor_ref: [1, 2, 3]
-  ft_sensor_filter: /iir_siso/unit
+  type: cartesian_3D_admittance
+
+  description: The robot responses to external forces by changing the
+               position of its end-effector while keeping the
+               orientation of the end-effector fixed. The reference
+               position of the end-effector is its initial
+               position. The reference wrench is the initial wrench
+               reading.
+
+  filter: /fir_mimo/admittance3D  # decoupled classical admittance controller
 
 # The below dictionary (joint_admittance_control) defines controller:
 # joint_admittance_controller
@@ -40,10 +41,10 @@ joint_admittance_controller:
     filter: /iir_siso/convergent_output
   j3:
     # filter: /iir_siso/hinf_co14 # or admittance_filter
-    filter: /iir_siso/admittance_filter
+    # filter: /iir_siso/admittance_filter
     # filter: /fir_siso/super  # controller in testing
     # filter: /fir_siso/519fd05  # an SLS controller
-    # filter: /iir_siso/convergent_output
+    filter: /iir_siso/convergent_output
   j4:
     filter: /iir_siso/convergent_output
   j5:
