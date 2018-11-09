@@ -66,8 +66,9 @@ public:
 };
 
 
-// A collection of controller. Used to implement Joint Admittance controller, where each
-// joint is controlled individually.
+/*A collection of controller. Used to implement Joint Admittance controller, where each
+ * joint is controlled individually.
+ */
 class ControllerCollection: public LTI {
     std::vector<std::shared_ptr<LTI > > controllers;
 public:
@@ -86,6 +87,21 @@ public:
     dVector compute(const dVector & y_n);
     void set_state(const dVector & x_n);
 };
+
+/*! Cartesian Position Tracker
+ *
+ * Compute Joint Position Command to track a given position pos[n] while keeping the orientation fixed at the
+ * initial value quat_init.
+ *
+ */
+ class CartPositionTracker: public LTI {
+     dVector jnt_pos_current,  /* Current robot joint position */
+             quat_init; /* Initial orientation */
+ public:
+     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init);
+     dVector compute(const dVector & pos_n);
+     void set_state(const dVector & jnt_pos_n);
+ };
 }
 
 

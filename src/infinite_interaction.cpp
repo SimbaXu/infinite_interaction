@@ -73,16 +73,27 @@ namespace InfInteraction {
         }
         return y_offset;
     }
-
     void SimpleOffset::set_state(const dVector &x_n) {
         // Do nothing
     }
-
     SimpleOffset::SimpleOffset(const dVector &offset_) {
         offset.resize(offset_.size());
         for(unsigned int i=0; i < offset.size(); i++){
             offset[i] = offset_[i];
         }
+    }
+
+    Wrench2CartForceProjector::Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr_,
+                                                         std::string ft_sensor_frame) {
+        T_wee = robot_ptr_->GetManipulator(ft_sensor_frame)->GetEndEffectorTransform();
+    }
+    dVector Wrench2CartForceProjector::compute(const dVector &wrench) {
+        OpenRAVE::RaveVector<double> force (wrench[0], wrench[1], wrench[2]), force_rotated;
+        force_rotated = T_wee.rotate(force);
+        return dVector {force_rotated.x, force_rotated.y, force_rotated.z};
+    }
+    void Wrench2CartForceProjector::set_state(const dVector &x_n) {
+        // Do nothing
     }
 }
 
@@ -122,6 +133,7 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &wrench) {
     wrench[4] = ty;
     wrench[5] = tz;
 }
+
 FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input) :  fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
     wrench_offset.resize(6);
     b = {1};
@@ -146,7 +158,7 @@ FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_i
     b = b_in;
     a = a_in;
     wrench_offset.resize(6);
-    for (int i = 0; i < 6; ++i) {
+    for (unsigned int i = 0; i < 6; ++i) {
         wrench_offset[i] = wrench_offset_input[i];
         lp_filters.push_back(DiscreteTimeFilter(b, a, 0));
     }
@@ -166,6 +178,13 @@ void FTSensorHandler::log_latest_wrench(const std_msgs::Header &header) {
     }
 }
 
+
+void FTSensorHandler::set_wrench_offset(dVector wrench_offset_) {
+    wrench_offset_.resize(6);
+     for (unsigned int i = 0; i < 6; ++i) {
+        wrench_offset[i] = wrench_offset_[i];
+    }
+}
 
 
 ExternalTorquePublisher::ExternalTorquePublisher(std::string name_space, ros::NodeHandle &nh): _name_space(name_space), _nh(nh)  {
@@ -231,7 +250,7 @@ void JointPositionController::set_joint_positions(std::vector<double>& jnt_posit
 
 DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
     n = 0;
-    order = a_in.size() - 1;
+    order = static_cast<int>(a_in.size() - 1);
     mem_sz = order + 1;
     assert(order >= 0); // at least a zeroth-order coefficient is expected
     assert(a_in[0] > 0);  // first coefficient needs to be positive, this might not be necessary though.
@@ -244,7 +263,7 @@ DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_init
     }
 
     // resize b_in to a vector of size (order + 1) and shift it rightward
-    int size_a = b_in.size();
+    int size_a = static_cast<int>(b_in.size());
     for (int i=size_a; i <= order; ++i){
         b_in.push_back(0);
     }
@@ -287,7 +306,7 @@ void FIRsrfb::init_filter(dVector uinit) {
         throw std::invalid_argument("Wrong input shape");
     }
     // the 0-th impulse of MB2 is zero
-    for (int i = 0; i < nu * nu; ++i) {
+    for (unsigned int i = 0; i < nu * nu; ++i) {
         if (MB2[i] != 0){
             throw std::invalid_argument("MB2[0] needs to be zero");
         }
@@ -386,10 +405,10 @@ void matrix_add(std::vector<double> &x, std::vector<double> &y, std::vector<doub
     }
 }
 
-std::vector<double> mat_transpose(const std::vector<double>& M, int ncol){
+std::vector<double> mat_transpose(const std::vector<double>& M, unsigned int ncol){
     assert(M.size() % ncol == 0);
     std::vector<double> M_T (M.size());
-    unsigned int nrow = static_cast<int>(M.size() / ncol);
+    auto nrow = static_cast<unsigned int>(M.size() / ncol);
     for(unsigned int i=0; i < nrow; i++){
         for(unsigned int j=0; j < ncol; j++){
             M_T[j * nrow + i] = M[i * ncol + j];
