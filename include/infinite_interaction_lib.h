@@ -95,6 +95,7 @@ public:
     void set_state(const dVector & x_n);
 };
 
+
 /*! Cartesian Position Tracker
  *
  * Compute Joint Position Command to track a given position pos[n] while keeping the orientation fixed at the
@@ -111,6 +112,11 @@ public:
      OpenRAVE::RobotBase::ManipulatorPtr manip_ptr;
  public:
      CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init);
+     /*! Compute a new joint position that tracks the given Cartesian pos_n.
+      *
+      * This function solves a QP with Jacobians computed using OpenRAVE. A single
+      * optimization problem is employed.
+      * */
      dVector compute(const dVector & pos_n);
      void set_state(const dVector & jnt_pos_n);
  };
@@ -297,8 +303,11 @@ private:
     ros::NodeHandle _nh;
 };
 
+[[deprecated("Use Eigen3 instead: cleaner code and less buggy")]]
 void matrix_mult(std::vector<double> &A, std::vector<double> &x, std::vector<double> &y);
+[[deprecated("Use Eigen3 instead: cleaner code and less buggy")]]
 void matrix_add(std::vector<double> &x, std::vector<double> &y, std::vector<double> &z);
+[[deprecated("Use Eigen3 instead: cleaner code and less buggy")]]
 std::vector<double> mat_transpose(const std::vector<double>& M, int ncol);
 
 #endif //PROJECT_INFINITE_INTERACTION_LIB_H

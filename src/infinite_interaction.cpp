@@ -3,9 +3,11 @@
 //
 
 #include <include/infinite_interaction_lib.h>
-
 #include "infinite_interaction_lib.h"
-
+#include <Eigen/Dense>
+#include <qpOASES.hpp>
+#include <eigen3/Eigen/src/Core/Matrix.h>
+#include <eigen3/Eigen/src/Core/util/Constants.h>
 
 namespace InfInteraction {
     JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame)
@@ -123,22 +125,57 @@ namespace InfInteraction {
 
         // get current position and quaternion
         OpenRAVE::Transform T_wee_cur = manip_ptr->GetTransform();
-        auto dpos = T_wee_cur.trans - pos_init;
-        auto dquat = T_wee_cur.rot - quat_init;
-        dVector J_trans, J_rot;
-        manip_ptr->CalculateJacobian(J_trans);
-        manip_ptr->CalculateRotationJacobian(J_rot);
+        OpenRAVE::RaveVector<double> pos_n_rave (pos_n[0], pos_n[1], pos_n[2]);
+        auto dpos_rave = pos_n_rave - T_wee_cur.trans;
+        auto dquat_rave = quat_init - T_wee_cur.rot;
+        dVector J_trans_arr, J_rot_arr;
+        manip_ptr->CalculateJacobian(J_trans_arr);
+        manip_ptr->CalculateRotationJacobian(J_rot_arr);
+
+        // Eigen::Map provides a view on the contigous memory array. Very convenience.
+        Eigen::Map<Eigen::Matrix<double, 3, 6, Eigen::RowMajor> > J_trans(J_trans_arr.data());
+        Eigen::Map<Eigen::Matrix<double, 4, 6, Eigen::RowMajor> > J_rot(J_rot_arr.data());
+        Eigen::Matrix<double, 3, 1> dpos; dpos << dpos_rave.x, dpos_rave.y, dpos_rave.z;
+        Eigen::Matrix<double, 4, 1> dquat; dquat << dquat_rave.x, dquat_rave.y, dquat_rave.z, dquat_rave.w;
+
 
         // Solve an optimization to find the next best action:
-        // min (dpos - J_trans dq)^2 + (dquat - J_rot dq) ^ 2 + gam * dq^2 (for regularization)
+        // min (dpos_rave - J_trans_arr dq)^2 + (dquat_rave - J_rot dq) ^ 2 + gam * dq^2 (for regularization)
         // s.t.    dqmin <= dq <= dqmax
-        //         qmin - q_cur <= dq <= qmax - q_cur
+        //         dqmin - q_cur <= dq <= qmax - q_cur
         //
         // NOTE: the following equality is every helpful:
-        //   (dpos - J_trans dq)^2  = 0.5 dq.T (2 J^T J) dq - (2 J^T dpos) dq + dpos^T dpos
-        dVector dq;
+        //   (dpos_rave - J_trans_arr dq)^2  = 0.5 dq.T (2 J^T J) dq - (2 J^T dpos) dq + dpos^T dpos
+        // NOTE: There are 6 constraints, and 6 bounds on dq.
 
+        // Form Quadratic objective: 0.5 x^T H x + g^T x
+        Eigen::Matrix<double, 6, 6, Eigen::RowMajor> H;
+        H = 2 * J_trans.transpose() * J_trans + 2 * J_rot.transpose() * J_rot + 2 * Eigen::Matrix<double, 6, 6>::Identity() * 0.01;
+        Eigen::Matrix<double, 6, 1> g;
+        g = - 2 * J_trans.transpose() * dpos - 2 * J_rot.transpose() * dquat;
 
+        // Form constraints: TODO: include constraints
+        dVector dqmin(6), dqmax(6);
+        std::fill(dqmin.begin(), dqmin.end(), -0.1);
+        std::fill(dqmax.begin(), dqmax.end(),  0.1);
+
+        // Form problem
+        qpOASES::Options options;
+        options.printLevel = qpOASES::PL_LOW;
+        qpOASES::SQProblem qp_instance(6, 0);
+        qp_instance.setOptions(options);
+        int nWSR = 100;
+        qpOASES::returnValue ret = qp_instance.init(H.data(), g.data(), NULL, dqmin.data(), dqmax.data(), NULL, NULL, nWSR, 0);
+        dVector dq(6);
+        if (ret == qpOASES::returnValue::SUCCESSFUL_RETURN){
+            qpOASES::real_t dq_opt[6];
+            qp_instance.getPrimalSolution(dq_opt);
+            for(int i=0; i < 6; ++i) dq[i] = dq_opt[i];
+        }
+        else {
+            ROS_WARN_STREAM("Optimization with qpOASES fails. Setting dq to zero.");
+            std::fill(dq.begin(), dq.end(), 0);
+        }
         dVector jnt_pos_cmd;
         for(unsigned int i=0; i < 6; i ++){
             jnt_pos_cmd.push_back(jnt_pos_current[i] + dq[i]);

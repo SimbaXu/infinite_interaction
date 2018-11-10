@@ -12,13 +12,14 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
+find_package(Eigen3 3.3 REQUIRED)
+
 # openrave dep
 find_package(OpenRAVE REQUIRED)
 find_package(Boost ${OpenRAVE_Boost_VERSION} EXACT COMPONENTS iostreams python thread system)
 if( CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX )
     add_definitions("-fno-strict-aliasing -Wall")
 endif( CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX )
-
 # end openrave dep
 
 if( Boost_INCLUDE_DIRS )
@@ -40,21 +41,23 @@ add_executable(joint_admittance_controller
 target_include_directories(joint_admittance_controller PUBLIC include)
 target_link_libraries(joint_admittance_controller
   ${catkin_LIBRARIES}
-  qpOASES
+  qpOASES Eigen3::Eigen
   # openrave dependencies
   ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
   ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
   )
+
 set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
 add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp src/infinite_interaction.cpp)
 target_include_directories(sinuisoidal_motion_generator PUBLIC include)
 target_link_libraries(sinuisoidal_motion_generator
-  ${catkin_LIBRARIES}
-  # openrave depencidenc
-  ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
-  ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+        ${catkin_LIBRARIES}
+	qpOASES Eigen3::Eigen
+	# openrave depencidencies
+        ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
+        ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
   )
 set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
@@ -62,6 +65,7 @@ set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${Open
 add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp src/infinite_interaction.cpp)
 target_link_libraries(test_discrete_time_filter gtest_main
         ${catkin_LIBRARIES}
+	qpOASES Eigen3::Eigen
         )
 target_include_directories(test_discrete_time_filter PUBLIC include)
 
@@ -69,5 +73,16 @@ target_include_directories(test_discrete_time_filter PUBLIC include)
 add_executable(test_fir_controller src/tests/test_fir_controller.cpp src/infinite_interaction.cpp)
 target_link_libraries(test_fir_controller gtest_main
         ${catkin_LIBRARIES}
+	qpOASES Eigen3::Eigen
         )
 target_include_directories(test_fir_controller PUBLIC include)
+
+add_executable(test_cart_position_tracker src/tests/test_cart_position_tracker.cpp src/infinite_interaction.cpp)
+target_link_libraries(test_cart_position_tracker gtest_main
+        ${catkin_LIBRARIES}
+        qpOASES Eigen3::Eigen
+        # openrave depencidencies
+        ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
+        ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+        )
+target_include_directories(test_cart_position_tracker PUBLIC include)
