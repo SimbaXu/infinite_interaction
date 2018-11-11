@@ -135,8 +135,12 @@ def analysis_freq(extracted_data, cmd, keys):
 
 def analysis_view(extracted_data, cmd_string, keys):
     """ View and analyze extracted data.
-    """
 
+    Args:
+        extracted_data (dict): Extracted data. See `extract_data_from_bag`
+        cmd_string (str): Command string.
+        keys (list): list of keys in sorted order.
+    """
     indices_str = cmd_string.split(" ")[1]
     figure, ax = plt.subplots(1, 1)
     for cmd in indices_str.split(','):
@@ -203,13 +207,16 @@ def analysis_view(extracted_data, cmd_string, keys):
 
 
 def extract_data_from_bag(DATA_PATH):
-    """ Extract data from a bag file from `DATA_PATH`.
+    """Extract data from a bag file from `DATA_PATH`.
 
     Args
         DATA_PATH (str): Path to data file.
 
     Returns
-        (dict): Extracted data
+        (dict): Extracted data. data[topic] contains data obtained
+        from the topic. Essentially are time, the data, and type of
+        the topic.
+
     """
     print("Start extracting data")
     bag = rosbag.Bag(os.path.expanduser(DATA_PATH))
@@ -261,8 +268,10 @@ def extract_data_from_bag(DATA_PATH):
     return extracted_data
 
 
+# NOTE: This function is not maintained.
 def analysis_z(extracted_data, cmd, keys, gam=0):
     """Analyze data and identify model in discrete time.
+
 
     Note: This script analyse interaction between two scalar signal
     only. MIMO is possible, but that is for a future project.
@@ -341,6 +350,7 @@ def analysis_z(extracted_data, cmd, keys, gam=0):
 
     scipy.io.savemat("11_1_J3_human.mat", {'x': xin, 'y': yact})
 
+
 def get_data(extracted_data, idx_str, keys):
     """ Extract a dictionary using string command.
     """
@@ -395,12 +405,6 @@ if __name__ == '__main__':
                  "\n\n -- [freqresp or f] [tmin,tmax or tmin] i,j,k  "
                  "\n    > plot the frequency response of signals i,j,k between tmin and tmax."
                  "\n    > or tmin and tmin + 12.56.")
-
-    # cmd = "z 60,80 3 2,10"
-    # analysis_z(extracted_data, cmd, keys)
-    # import IPython
-    # if IPython.get_ipython() is None:
-    #     IPython.embed()
 
     print(help_msgs)
     while True:
