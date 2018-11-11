@@ -126,7 +126,8 @@ namespace InfInteraction {
         // get current position and quaternion
         OpenRAVE::Transform T_wee_cur = manip_ptr->GetTransform();
         OpenRAVE::RaveVector<double> pos_n_rave (pos_n[0], pos_n[1], pos_n[2]);
-        auto dpos_rave = pos_n_rave - T_wee_cur.trans;
+        // pos_cur = pos_init + pos_n
+        auto dpos_rave = pos_init + pos_n_rave - T_wee_cur.trans;
         auto dquat_rave = quat_init - T_wee_cur.rot;
         dVector J_trans_arr, J_rot_arr;
         manip_ptr->CalculateJacobian(J_trans_arr);

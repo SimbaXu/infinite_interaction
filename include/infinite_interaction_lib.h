@@ -112,10 +112,13 @@ public:
      OpenRAVE::RobotBase::ManipulatorPtr manip_ptr;
  public:
      CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init);
-     /*! Compute a new joint position that tracks the given Cartesian pos_n.
+
+     /*! \brief Compute joint values that track the given the Cartesian position pos_n.
       *
       * This function solves a QP with Jacobians computed using OpenRAVE. A single
       * optimization problem is employed.
+      *
+      * \param pos_n Cartesian position of the end-effector w.r.t to the initial Cartesian position.
       * */
      dVector compute(const dVector & pos_n);
      void set_state(const dVector & jnt_pos_n);

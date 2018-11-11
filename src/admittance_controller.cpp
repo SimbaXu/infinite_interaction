@@ -190,7 +190,8 @@ int main(int argc, char **argv)
         ft_handler.set_wrench_offset(wrench_offset_);
         // from external wrench_current to joint torque
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
-        // Cartesian admittance controller is a fir_mino type
+        // Cartesian admittance controller is a fir_mino type. The initial position (Cartesian, 3D) is zero.
+        // The initial pose is kept fixed.
         std::string filter_path;
         int T, nu, ny;
         dVector L, MB2;
@@ -226,19 +227,19 @@ int main(int argc, char **argv)
         // call all callbacks
         ros::spinOnce();
 
-        // get current wrench_current and joint position
+        // collect current wrench_current and joint position
         ft_handler.get_latest_wrench(wrench_current);
         jnt_pos_current = jnt_pos_handler.get_latest_jnt_position();
 
-        // convert wrench_current to control force measurement
+        // wrench transform: convert wrench_current to control force measurement
         force_map_ptr->set_state(jnt_pos_current);
         auto y_n = force_map_ptr->compute(wrench_current);
 
-        // run control force measurement through controller
+        // control law: run control force measurement through controller
         auto u_n = controller_ptr->compute(y_n);
 
-        // map control displacement to actual joint command
-        position_map_ptr->set_state(jnt_pos_cmd);
+        // inverse kinematics: map control displacement to actual joint command
+        position_map_ptr->set_state(jnt_pos_current);
         jnt_pos_cmd = position_map_ptr->compute(u_n);
 
         // send joint position command
