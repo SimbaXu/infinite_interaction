@@ -125,14 +125,27 @@ public:
  };
 
 
+ /* A convenient class for publishing messages for debugging or logging with simple usage.
+  * Register the topic by name, then publish messages from STL Vector<double>.
+  */
  class TopicDebugger {
-     std::vector<std::shared_ptr<ros::Publisher > > pub_vecs;
-     std::string debug_ns;
+     std::vector<std::shared_ptr<ros::Publisher > > pub_vecs; /* Publishers vector */
+     std::string debug_ns;  /*Base namespace*/
      ros::NodeHandle nh;
 
  public:
      TopicDebugger(std::string debug_ns, ros::NodeHandle & node_handle);
+     /*! Register new topic
+      *
+      * @param topic_name
+      * @return topic index.
+      */
      int register_multiarray(std::string topic_name);
+     /*! Publish message on selected topic
+      *
+      * @param topic_id
+      * @param data
+      */
      void publish_multiarray(int topic_id, const dVector & data);
  };
 }
