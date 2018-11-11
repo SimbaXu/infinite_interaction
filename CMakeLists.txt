@@ -36,7 +36,8 @@ catkin_package()
 # admittance controller: (main program)
 add_executable(joint_admittance_controller
         src/admittance_controller.cpp
-        src/infinite_interaction.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp
+		src/libinfinite_interaction/filters.cpp
         )
 target_include_directories(joint_admittance_controller PUBLIC include)
 target_link_libraries(joint_admittance_controller
@@ -50,34 +51,41 @@ target_link_libraries(joint_admittance_controller
 set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp src/infinite_interaction.cpp)
+add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp)
 target_include_directories(sinuisoidal_motion_generator PUBLIC include)
 target_link_libraries(sinuisoidal_motion_generator
         ${catkin_LIBRARIES}
-	qpOASES Eigen3::Eigen
-	# openrave depencidencies
+		qpOASES Eigen3::Eigen
+		# openrave depencidencies
         ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
         ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
   )
 set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp src/infinite_interaction.cpp)
+add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp src/libinfinite_interaction/infinite_interaction.cpp)
 target_link_libraries(test_discrete_time_filter gtest_main
         ${catkin_LIBRARIES}
-	qpOASES Eigen3::Eigen
+		qpOASES Eigen3::Eigen
         )
 target_include_directories(test_discrete_time_filter PUBLIC include)
 
 
-add_executable(test_fir_controller src/tests/test_fir_controller.cpp src/infinite_interaction.cpp)
+add_executable(test_fir_controller src/tests/test_fir_controller.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp
+		src/libinfinite_interaction/filters.cpp
+		)
 target_link_libraries(test_fir_controller gtest_main
-        ${catkin_LIBRARIES}
-	qpOASES Eigen3::Eigen
+		${catkin_LIBRARIES}
+		qpOASES Eigen3::Eigen
         )
 target_include_directories(test_fir_controller PUBLIC include)
 
-add_executable(test_cart_position_tracker src/tests/test_cart_position_tracker.cpp src/infinite_interaction.cpp)
+add_executable(test_cart_position_tracker src/tests/test_cart_position_tracker.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp
+		src/libinfinite_interaction/filters.cpp
+		)
 target_link_libraries(test_cart_position_tracker gtest_main
         ${catkin_LIBRARIES}
         qpOASES Eigen3::Eigen
@@ -86,3 +94,10 @@ target_link_libraries(test_cart_position_tracker gtest_main
         ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
         )
 target_include_directories(test_cart_position_tracker PUBLIC include)
+
+add_executable(test_topic_debugger src/tests/test_topic_debugger.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp
+		)
+target_include_directories(test_topic_debugger PUBLIC include)
+target_link_libraries(test_topic_debugger gtest
+        ${catkin_LIBRARIES} )

@@ -3,7 +3,7 @@
 //
 
 #include "gtest/gtest.h"
-#include <infinite_interaction_lib.h>
+#include <infinite_interaction/infinite_interaction_lib.h>
 
 // openrave
 #include <openrave-core.h>
@@ -41,19 +41,18 @@ TEST(CartTracker, visual){
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr env_ptr = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-    boost::thread thviewer(boost::bind(SetViewer,env_ptr, "qtosg"));  // create viewer
+//    boost::thread thviewer(boost::bind(SetViewer,env_ptr, "qtosg"));  // create viewer
     env_ptr->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot_ptr;
     robot_ptr = env_ptr->GetRobot(robot_name);
     robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
     auto manip_ptr = robot_ptr->GetManipulator(manip_name);
 
-
-
     // Fed the same position 100 times
     std::vector<dVector > cart_poss; // desired cart positions
+    double dx = -0.1, dy = 0.05, dz=-0.035;
     for (int i=0; i < 20; ++i){
-        cart_poss.push_back(dVector {0.68, 0.10, 0.6});
+        cart_poss.push_back(dVector {dx, dy, dz});
     }
 
     // Desired value
@@ -77,14 +76,14 @@ TEST(CartTracker, visual){
 
     double eps = 1e-3, eps_quat=1e-2;
 
-    EXPECT_NEAR(0.68, T_wee_final.trans.x, eps) << "pos[x] wrong";
-    EXPECT_NEAR(0.10, T_wee_final.trans.y, eps) << "pos[y] wrong";
-    EXPECT_NEAR(0.60, T_wee_final.trans.z, eps) << "pos[z] wrong";
+    EXPECT_NEAR(T_wee_init.trans.x + dx, T_wee_final.trans.x, eps) << "pos[x] wrong";
+    EXPECT_NEAR(T_wee_init.trans.y + dy, T_wee_final.trans.y, eps) << "pos[y] wrong";
+    EXPECT_NEAR(T_wee_init.trans.z + dz, T_wee_final.trans.z, eps) << "pos[z] wrong";
     EXPECT_NEAR(pose_init.x, T_wee_final.rot.x, eps_quat) << "quat[x] wrong";
     EXPECT_NEAR(pose_init.y, T_wee_final.rot.y, eps_quat) << "quat[y] wrong";
     EXPECT_NEAR(pose_init.z, T_wee_final.rot.z, eps_quat) << "quat[z] wrong";
     EXPECT_NEAR(pose_init.w, T_wee_final.rot.w, eps_quat) << "quat[w] wrong";
-    
+
 //    thviewer.join(); // wait for the viewer thread to exit
     env_ptr->Destroy(); // destroy
 }

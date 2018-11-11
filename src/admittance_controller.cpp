@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <math.h>
-#include <infinite_interaction_lib.h>
+#include <include/infinite_interaction/infinite_interaction_lib.h>
 // openrave
 #include <openrave-core.h>
 #include <boost/thread/thread.hpp>
@@ -86,6 +86,15 @@ int main(int argc, char **argv)
 
     // Publisher for torque inputs to the controller (for logging/debugging purposes)
     ExternalTorquePublisher torque_pub(name_space, node_handle);
+    std::string debug_ns = "/debugger";
+
+    // debugger that publishes data to topics
+    InfInteraction::TopicDebugger debugger(debug_ns, node_handle);
+    int wId, yId, uId, qId;
+    wId = debugger.register_multiarray("w[n]"); // wrench
+    yId = debugger.register_multiarray("y[n]"); // force output
+    uId = debugger.register_multiarray("u[n]"); // position output
+    qId = debugger.register_multiarray("q[n]"); // joint command
 
     // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
     OpenRAVE::RaveInitialize(true); // start openrave core
@@ -246,7 +255,13 @@ int main(int argc, char **argv)
         jnt_pos_act.set_joint_positions(jnt_pos_cmd);
 
         // publish debug information
-        torque_pub.publish_joint_torques(u_n);
+        if (debug) torque_pub.publish_joint_torques(u_n);
+        if (debug) {
+            debugger.publish_multiarray(wId, wrench_current);
+            debugger.publish_multiarray(yId, y_n);
+            debugger.publish_multiarray(uId, u_n);
+            debugger.publish_multiarray(qId, jnt_pos_cmd);
+        }
 
         // record time required
         auto tend = ros::Time::now();

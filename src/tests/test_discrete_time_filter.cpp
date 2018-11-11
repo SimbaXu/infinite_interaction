@@ -3,7 +3,7 @@
 //
 
 #include "gtest/gtest.h"
-#include <infinite_interaction_lib.h>
+#include <infinite_interaction/infinite_interaction_lib.h>
 
 
 TEST(IIR_scalar, case1){

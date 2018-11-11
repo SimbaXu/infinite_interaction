@@ -8,6 +8,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Header.h>
 #include <sensor_msgs/JointState.h>
 #include <vector>
@@ -15,8 +16,7 @@
 #include <openrave-core.h>
 
 typedef std::vector<double> dVector;
-
-
+typedef std_msgs::Float64MultiArray MultiArrayMsg;
 
 // TODO: Rename this class to something more appropriate
 // A generic Base class for a discrete-time processing "block" that receives at each time
@@ -122,6 +122,18 @@ public:
       * */
      dVector compute(const dVector & pos_n);
      void set_state(const dVector & jnt_pos_n);
+ };
+
+
+ class TopicDebugger {
+     std::vector<std::shared_ptr<ros::Publisher > > pub_vecs;
+     std::string debug_ns;
+     ros::NodeHandle nh;
+
+ public:
+     TopicDebugger(std::string debug_ns, ros::NodeHandle & node_handle);
+     int register_multiarray(std::string topic_name);
+     void publish_multiarray(int topic_id, const dVector & data);
  };
 }
 

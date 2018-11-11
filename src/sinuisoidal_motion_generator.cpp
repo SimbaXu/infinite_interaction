@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <math.h>
-#include <infinite_interaction_lib.h>
+#include <include/infinite_interaction/infinite_interaction_lib.h>
 // openrave
 #include <openrave-core.h>
 #include <boost/thread/thread.hpp>
