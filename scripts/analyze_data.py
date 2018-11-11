@@ -8,6 +8,7 @@ import sys
 import cvxpy as cvx
 import scipy.signal as signal
 import scipy.io
+import re
 
 
 def analysis_freq(extracted_data, cmd, keys):
@@ -133,75 +134,84 @@ def analysis_freq(extracted_data, cmd, keys):
     plt.show()
 
 
+def search_idx(idx_str, keys):
+    """Look for idx_str in keys.
+
+    Return immediately if idx_str is a valid integer. Otherwise,
+    return the first key that contains idx_str. Return None otherwise.
+    """
+    try:
+        idx_int = int(idx_str)
+        if idx_int > 0 and idx_int < len(keys):
+            return idx_int
+    except ValueError as e:  # Not a valid integer
+        for i, key in enumerate(keys):
+            if idx_str in key:
+                return i
+    return None
+
 def analysis_view(extracted_data, cmd_string, keys):
     """ View and analyze extracted data.
 
     Args:
         extracted_data (dict): Extracted data. See `extract_data_from_bag`
         cmd_string (str): Command string.
+            Example:
+              ex1. "v 1,2,3"
+
+                 View data found in topics 1,2,3.
+              ex2. "v 1/0,2/1"
+
+                 View the array data1[:, 0] and data2[:, 1].
+              ex3. "v d1/0,2/1"
+
+                 View the array diff(data1[:, 0]) / dT
+
         keys (list): list of keys in sorted order.
     """
-    indices_str = cmd_string.split(" ")[1]
-    figure, ax = plt.subplots(1, 1)
-    for cmd in indices_str.split(','):
-        if cmd[0] == 'd':
-            idx = int(cmd[1:].split('/')[0])
-            key = keys[idx]
-            if extracted_data[key]['type'] == 'std_msgs/Float64':
-                ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data']) / 0.008, '^-', label="diff/{:}".format(key))
-
-            elif extracted_data[key]['type'] == 'sensor_msgs/JointState':
-                if cmd[1:].split('/')[1] == '0':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 0]) / 0.008, 'x-', label='diff/{:}/j1'.format(key))
-                if cmd[1:].split('/')[1] == '1':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 1]) / 0.008, 'x-', label='diff/{:}/j2'.format(key))
-                if cmd[1:].split('/')[1] == '2':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 2]) / 0.008, 'x-', label='diff/{:}/j3'.format(key))
-                if cmd[1:].split('/')[1] == '3':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 3]) / 0.008, 'x-', label='diff/{:}/j4'.format(key))
-                if cmd[1:].split('/')[1] == '4':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 4]) / 0.008, 'x-', label='diff/{:}/j5'.format(key))
-                if cmd[1:].split('/')[1] == '5':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 5]) / 0.008, 'x-', label='diff/{:}/j6'.format(key))
-
-            elif extracted_data[key]['type'] == 'geometry_msgs/WrenchStamped':
-                if cmd[1:].split('/')[1] == 'fx':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 0]) / 0.008, 'o-', label='{:}/fx'.format(key))
-                if cmd[1:].split('/')[1] == 'fy':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 1]) / 0.008, 'o-', label='{:}/fy'.format(key))
-                if cmd[1:].split('/')[1] == 'fz':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 2]) / 0.008, 'o-', label='{:}/fz'.format(key))
-                if cmd[1:].split('/')[1] == 'taux':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 3]) / 0.008, 'o-', label='{:}/taux'.format(key))
-                if cmd[1:].split('/')[1] == 'tauy':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 4]) / 0.008, 'o-', label='{:}/tauy'.format(key))
-                if cmd[1:].split('/')[1] == 'tauz':
-                    ax.plot(extracted_data[key]['t'][1:], np.diff(extracted_data[key]['data'][:, 5]) / 0.008, 'o-', label='{:}/tauz'.format(key))
-
+    err_msg = "Failed to parse string: {:}".format(cmd_string)
+    subcmds_match = re.match(r"v\s*(.*)", cmd_string)
+    if subcmds_match is None:
+        print(err_msg)
+        return False
+    subcmds = subcmds_match.group(1).split(",")
+    # remove whitespaces: each subcmd now has the form
+    # [d]number[/number] (square bracket indicates optional elements)
+    subcmds = [s.replace(" ", "") for s in subcmds]
+    to_plot = []
+    for subcmd in subcmds:
+        if subcmd[0] == "d":
+            differentiate = True
+            subcmd = subcmd[1:]  # remove d
         else:
-            idx = int(cmd.split('/')[0])
-            key = keys[idx]
-            if extracted_data[key]['type'] == 'std_msgs/Float64':
-                ax.plot(extracted_data[key]['t'], extracted_data[key]['data'], '^-', label=key)
+            differentiate = False
+        # extract subdata dict
+        if "/" in subcmd:
+            main_idx = search_idx(subcmd.split("/")[0], keys)
+            t_arr = extracted_data[keys[main_idx]]['t']
+            data_arr = extracted_data[keys[main_idx]]['data']
+            sub_idxs = [int(subcmd.split("/")[1])]
+        else:
+            # either data is scalar
+            main_idx = search_idx(subcmd, keys)
+            t_arr = extracted_data[keys[main_idx]]['t']
+            data_arr = extracted_data[keys[main_idx]]['data'].reshape(t_arr.shape[0], -1)
+            sub_idxs = [i for i in range(data_arr.shape[1])]
+        topic = keys[main_idx]
 
-            elif extracted_data[key]['type'] == 'sensor_msgs/JointState':
-                jnt_idx = int(cmd[1:].split('/')[1])
-                ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, jnt_idx], 'x-', label='{:}/j{:d}'.format(key, jnt_idx + 1))
-
-            elif extracted_data[key]['type'] == 'geometry_msgs/WrenchStamped':
-                if cmd.split('/')[1] == 'fx':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 0], 'o-', label='{:}/fx'.format(key))
-                if cmd.split('/')[1] == 'fy':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 1], 'o-', label='{:}/fy'.format(key))
-                if cmd.split('/')[1] == 'fz':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 2], 'o-', label='{:}/fz'.format(key))
-                if cmd.split('/')[1] == 'taux':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 3], 'o-', label='{:}/taux'.format(key))
-                if cmd.split('/')[1] == 'tauy':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 4], 'o-', label='{:}/tauy'.format(key))
-                if cmd.split('/')[1] == 'tauz':
-                    ax.plot(extracted_data[key]['t'], extracted_data[key]['data'][:, 5], 'o-', label='{:}/tauz'.format(key))
-
+        for sub_idx in sub_idxs:
+            label = "{:}/{:d}".format(topic, sub_idx) if data_arr.shape[1] > 1 else topic
+            if differentiate:
+                label = "diff/" + label
+                to_plot.append(
+                    (t_arr[1:], np.diff(data_arr[:, sub_idx]) / 0.008, label))
+            else:
+                to_plot.append(
+                    (t_arr, data_arr[:, sub_idx], label))
+    # plot
+    figure, ax = plt.subplots(1, 1)
+    for x, y, label in to_plot:
+        ax.plot(x, y, label=label)
     plt.legend()
     plt.show()
 
@@ -265,6 +275,20 @@ def extract_data_from_bag(DATA_PATH):
             extracted_data[topic] = {'t': topic_t,
                                      'data': topic_data,
                                      'type': topic_tuple.msg_type}
+
+        if topic_tuple.msg_type == 'std_msgs/Float64MultiArray':
+            print(" -- Found topic [{:}], type: [{:}]".format(topic, topic_tuple.msg_type))
+            topic_t = []
+            topic_data = []
+            for _, msg, t in bag.read_messages(topic):
+                topic_t.append(t.to_sec())
+                topic_data.append(msg.data)
+            topic_t = np.array(topic_t)
+            topic_data = np.array(topic_data)
+            extracted_data[topic] = {'t': topic_t,
+                                     'data': topic_data,
+                                     'type': topic_tuple.msg_type}
+
     return extracted_data
 
 
@@ -420,3 +444,8 @@ if __name__ == '__main__':
 
         elif cmd.split(" ")[0] in ["z"]:
             pass
+
+        elif cmd == "i":
+            import IPython
+            if IPython.get_ipython() is None:
+                IPython.embed()
