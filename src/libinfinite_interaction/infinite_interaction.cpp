@@ -3,7 +3,6 @@
 //
 
 #include "infinite_interaction/infinite_interaction_lib.h"
-#include "infinite_interaction/filters.h"
 #include <ros/ros.h>
 
 InfInteraction::TopicDebugger::TopicDebugger(std::string debug_ns_, ros::NodeHandle &node_handle_): debug_ns(debug_ns_), nh(node_handle_){ }
@@ -60,6 +59,10 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &force, std::vector<
 }
 
 void FTSensorHandler::get_latest_wrench(std::vector<double> &wrench) {
+    if (fx == 0.12543214218){
+        ROS_FATAL_STREAM("FT handler has not received any signal. Stopping!");
+        ros::shutdown();
+    }
     wrench.resize(6);
     wrench[0] = fx;
     wrench[1] = fy;
@@ -69,7 +72,8 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &wrench) {
     wrench[5] = tz;
 }
 
-FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input) :  fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
+FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input) :  fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
+    // fx is initialized with a special constant, which is checked to make sure that the handler has received wrench reading.
     wrench_offset.resize(6);
     b = {1};
     a = {1};
@@ -79,7 +83,7 @@ FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input)
     }
 }
 
-FTSensorHandler::FTSensorHandler() : fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
+FTSensorHandler::FTSensorHandler() : fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
     wrench_offset.resize(6);
     b = {1};
     a = {1};
@@ -89,7 +93,7 @@ FTSensorHandler::FTSensorHandler() : fx(0), fy(0), fz(0), tx(0), ty(0), tz(0) {
     }
 }
 
-FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in) {
+FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)  {
     b = b_in;
     a = a_in;
     wrench_offset.resize(6);

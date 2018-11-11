@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <math.h>
-#include <include/infinite_interaction/infinite_interaction_lib.h>
+#include <infinite_interaction/infinite_interaction_lib.h>
 // openrave
 #include <openrave-core.h>
 #include <boost/thread/thread.hpp>
@@ -65,8 +65,8 @@ int main(int argc, char **argv)
     }
     ros::Rate rate(125);
     bool viewer, debug;
-    node_handle.param("/viewer", viewer, true);
-    node_handle.param<bool>("debug", debug, false);
+    node_handle.param("viewer", viewer, true);
+    node_handle.param("debug", debug, false);
 
     // Robot Joint Position data acquisition (from ros control) via JointPositionHandler
     JointPositionHandler jnt_pos_handler;
@@ -90,11 +90,12 @@ int main(int argc, char **argv)
 
     // debugger that publishes data to topics
     InfInteraction::TopicDebugger debugger(debug_ns, node_handle);
-    int wId, yId, uId, qId;
-    wId = debugger.register_multiarray("w[n]"); // wrench
-    yId = debugger.register_multiarray("y[n]"); // force output
-    uId = debugger.register_multiarray("u[n]"); // position output
-    qId = debugger.register_multiarray("q[n]"); // joint command
+    int wId, yId, uId, qId, qcmdId;
+    wId = debugger.register_multiarray("w_n"); // wrench
+    yId = debugger.register_multiarray("y_n"); // force output
+    uId = debugger.register_multiarray("u_n"); // position output
+    qId = debugger.register_multiarray("q_n"); // joint command
+    qcmdId = debugger.register_multiarray("qcmd_n"); // joint command
 
     // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
     OpenRAVE::RaveInitialize(true); // start openrave core
@@ -194,6 +195,7 @@ int main(int argc, char **argv)
     }
     else if (controller_type == "cartesian_3D_admittance"){
         // get current wrench_current reading and set it as the offset
+        ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
         dVector wrench_offset_;
         ft_handler.get_latest_wrench(wrench_offset_);
         ft_handler.set_wrench_offset(wrench_offset_);
@@ -255,12 +257,13 @@ int main(int argc, char **argv)
         jnt_pos_act.set_joint_positions(jnt_pos_cmd);
 
         // publish debug information
-        if (debug) torque_pub.publish_joint_torques(u_n);
         if (debug) {
+            ROS_DEBUG_STREAM_THROTTLE(1, "Debug mode on. Publishing message");
             debugger.publish_multiarray(wId, wrench_current);
             debugger.publish_multiarray(yId, y_n);
             debugger.publish_multiarray(uId, u_n);
-            debugger.publish_multiarray(qId, jnt_pos_cmd);
+            debugger.publish_multiarray(qId, jnt_pos_current);
+            debugger.publish_multiarray(qcmdId, jnt_pos_cmd);
         }
 
         // record time required
