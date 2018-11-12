@@ -17,11 +17,11 @@ cartesian_3D_controller:
                position. The reference wrench is the initial wrench
                reading.
 
-  filter: /fir_mimo/admittance3Dc  # decoupled classical admittance controller
+  filter: /fir_mimo/admittance3Dd  # decoupled classical admittance controller
   # filter: /fir_mimo/still
 
-  gam: 0.01
-  gam2: 0.001
+  gam: 1e-3
+  gam2: 1e-4
 
 # The below dictionary (joint_admittance_control) defines controller:
 # joint_admittance_controller
