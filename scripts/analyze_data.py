@@ -166,6 +166,9 @@ def analysis_view(extracted_data, cmd_string, keys):
               ex3. "v d1/0,2/1"
 
                  View the array diff(data1[:, 0]) / dT
+              ex4. "v 1/0:2"
+
+                 View array data1[:, 0:2]
 
         keys (list): list of keys in sorted order.
     """
@@ -190,7 +193,13 @@ def analysis_view(extracted_data, cmd_string, keys):
             main_idx = search_idx(subcmd.split("/")[0], keys)
             t_arr = extracted_data[keys[main_idx]]['t']
             data_arr = extracted_data[keys[main_idx]]['data']
-            sub_idxs = [int(subcmd.split("/")[1])]
+            match = re.match(r"([0-9\s]*):([0-9\s]*)", subcmd.split("/")[1])
+            if match:
+                i1 = int(match.group(1).replace(" ", ""))
+                i2 = int(match.group(2).replace(" ", ""))
+                sub_idxs = range(i1, i2)
+            else:  # now should be a single numb
+                sub_idxs = [int(subcmd.split("/")[1])]
         else:
             # either data is scalar
             main_idx = search_idx(subcmd, keys)
