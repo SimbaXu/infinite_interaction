@@ -76,6 +76,8 @@ public:
 
 /*! Project measured external acting wrench to Cartesian workspace
  *
+ * NOTE: The robot needs to be initialized to the initial configuration, before initializing
+ * this function. As
  */
 class Wrench2CartForceProjector: public SignalBlock {
     OpenRAVE::Transform T_wee;
@@ -112,19 +114,22 @@ public:
 /*! Cartesian Position Tracker
  *
  * Compute Joint Position Command to track a given position pos[n] while keeping the orientation fixed at the
- * initial value quat_init. At each iteration, the robot's position is set to jnt_pos_current. Therefore, for
- * applications in which the robot moves, which basically are every applications, users should call set_state
- * and update jnt_pos_current before calling compute.
+ * initial value.
+ *
+ * NOTE: At each iteration, users should call set_state
+ * and update jnt_pos_current before calling compute to obtain another joint position.
  */
  class CartPositionTracker: public SignalBlock {
-     dVector jnt_pos_current  /* Current robot joint position */ ;
+     dVector _jnt_pos_current,  /* Current robot joint position */
+             _jnt_pos_init;     /* Initial robot joint position */
      OpenRAVE::RaveVector<OpenRAVE::dReal>
-             quat_init, /*Initial orientation*/
-             pos_init /*Initial position*/ ;
+             _quat_init, /*Initial orientation*/
+             _pos_init /*Initial position*/ ;
      OpenRAVE::RobotBasePtr robot_ptr;
      OpenRAVE::RobotBase::ManipulatorPtr manip_ptr;
+     double _gam2, _gam;
  public:
-     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init);
+     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init, double gam=0.01, double gam2=0.01);
 
      /*! \brief Compute joint values that track the given the Cartesian position pos_n.
       *

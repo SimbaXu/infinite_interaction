@@ -108,11 +108,12 @@ void InfInteraction::Wrench2CartForceProjector::set_state(const dVector &x_n) {
     // Do nothing
 }
 
-InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string manip_frame,
-                                                         dVector jnt_pos_init): robot_ptr(robot_ptr_), jnt_pos_current(jnt_pos_init) {
+InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string manip_frame, dVector jnt_pos_init, double gam, double gam2):
+        robot_ptr(robot_ptr_), _jnt_pos_current(jnt_pos_init), _jnt_pos_init(jnt_pos_init), _gam2(gam2), _gam(gam)
+{
     // lock
     boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
-    robot_ptr_->SetActiveDOFValues(jnt_pos_current);
+    robot_ptr_->SetActiveDOFValues(_jnt_pos_current);
 
     manip_ptr = robot_ptr->GetManipulator(manip_frame);
     if(!manip_ptr){
@@ -121,22 +122,22 @@ InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr 
     }
     else {
         OpenRAVE::Transform T_wee = manip_ptr->GetTransform();
-        quat_init = T_wee.rot;
-        pos_init = T_wee.trans;
+        _quat_init = T_wee.rot;
+        _pos_init = T_wee.trans;
     }
 }
 
 dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     // lock
     boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
-    robot_ptr->SetActiveDOFValues(jnt_pos_current);
+    robot_ptr->SetActiveDOFValues(_jnt_pos_current);
 
     // get current position and quaternion
     OpenRAVE::Transform T_wee_cur = manip_ptr->GetTransform();
     OpenRAVE::geometry::RaveVector<double> pos_n_rave (pos_n[0], pos_n[1], pos_n[2]);
-    // pos_cur = pos_init + pos_n
-    auto dpos_rave = pos_init + pos_n_rave - T_wee_cur.trans;
-    auto dquat_rave = quat_init - T_wee_cur.rot;
+    // pos_cur = _pos_init + pos_n
+    auto dpos_rave = _pos_init + pos_n_rave - T_wee_cur.trans;
+    auto dquat_rave = _quat_init - T_wee_cur.rot;
     dVector J_trans_arr, J_rot_arr;
     manip_ptr->CalculateJacobian(J_trans_arr);
     manip_ptr->CalculateRotationJacobian(J_rot_arr);
@@ -149,26 +150,37 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
 
 
     // Solve an optimization to find the next best action:
-    // min (dpos_rave - J_trans_arr dq)^2 + (dquat_rave - J_rot dq) ^ 2 + gam * dq^2 (for regularization)
+    // min (dpos_rave - J_trans_arr dq)^2 + (dquat_rave - J_rot dq) ^ 2 + gam * dq^2 (t3) + (q_init - q_cur - dq)^2 * gam2 (t4)
     // s.t.    dqmin <= dq <= dqmax
     //         dqmin - q_cur <= dq <= qmax - q_cur
     //
-    // NOTE: the following equality is every helpful:
+    // NOTE: the following equalities are helpful in deriving coefficients for qpOASES solver
+    //
     //   (dpos_rave - J_trans_arr dq)^2  = 0.5 dq.T (2 J^T J) dq - (2 J^T dpos) dq + dpos^T dpos
+    //
+    //   (q_i - q_c - dq)^2 = dq^T dq - 2 (q_i - q_c)^T dq + (q_i - q_c)^2
+    //
     // NOTE: There are 6 constraints, and 6 bounds on dq.
+    // Coefficient t3 is for regularization. gam is set to 0.01
+    //
+    // Coefficient t4 is to encourgate the robot to keep its
+    // initial configuration. A side-effect of this term is that the robot would try to move back
+    // to the initial configuration when there is no force acting on it. gam2 is set to 0.01
 
     // Form Quadratic objective: 0.5 x^T H x + g^T x
     Eigen::Matrix<double, 6, 6, Eigen::RowMajor> H;
-    H = 2 * J_trans.transpose() * J_trans + 2 * J_rot.transpose() * J_rot + 2 * Eigen::Matrix<double, 6, 6, Eigen::RowMajor>::Identity() * 0.01;
+    H = 2 * J_trans.transpose() * J_trans + 2 * J_rot.transpose() * J_rot + 2 * Eigen::Matrix<double, 6, 6, Eigen::RowMajor>::Identity() * (_gam + _gam2);
     Eigen::Matrix<double, 6, 1> g;
-    g = - 2 * J_trans.transpose() * dpos - 2 * J_rot.transpose() * dquat;
+    Eigen::Map<Eigen::Matrix<double, 6, 1> > eigen_jnt_pos_init (_jnt_pos_init.data());
+    Eigen::Map<Eigen::Matrix<double, 6, 1> > eigen_jnt_pos_current (_jnt_pos_current.data());
+    g = - 2 * J_trans.transpose() * dpos - 2 * J_rot.transpose() * dquat - 2 * _gam2 * (eigen_jnt_pos_init - eigen_jnt_pos_current);
 
     // Form fixed bounds -0.1 <= dq <= 0.1 and joint limits constraints
     dVector dqmin(6), dqmax(6), qlow, qhigh;
     robot_ptr->GetActiveDOFLimits(qlow, qhigh);
     for(int i=0; i < 6; i++){
-        dqmin[i] = MAX(qlow[i] - jnt_pos_current[i], -0.1);
-        dqmax[i] = MIN(qhigh[i] - jnt_pos_current[i], 0.1);
+        dqmin[i] = MAX(qlow[i] - _jnt_pos_current[i], -0.1);
+        dqmax[i] = MIN(qhigh[i] - _jnt_pos_current[i], 0.1);
     }
 
     // Form optimization problem and solve
@@ -187,7 +199,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
         qp_instance.getPrimalSolution(dq_opt);
         for(int i=0; i < 6; ++i) dq[i] = dq_opt[i];
         for(unsigned int i=0; i < 6; i ++){
-            jnt_pos_cmd.push_back(jnt_pos_current[i] + dq[i]);
+            jnt_pos_cmd.push_back(_jnt_pos_current[i] + dq[i]);
         }
         // joint limits are satisfied by the optimization parameters
 
@@ -197,7 +209,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     else {
         ROS_WARN_STREAM("[Optimization fails] Keeping the robot at its current position.");
         for(unsigned int i=0; i < 6; i ++){
-            jnt_pos_cmd.push_back(jnt_pos_current[i]);
+            jnt_pos_cmd.push_back(_jnt_pos_current[i]);
         }
     }
 
@@ -205,7 +217,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
 }
 
 void InfInteraction::CartPositionTracker::set_state(const dVector &jnt_pos_n) {
-    jnt_pos_current = jnt_pos_n;
+    _jnt_pos_current = jnt_pos_n;
 }
 
 

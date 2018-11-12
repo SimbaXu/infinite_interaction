@@ -128,7 +128,6 @@ int main(int argc, char **argv)
         ft_handler.set_debug(node_handle);
     }
 
-
     // Initialize controlling blocks for the given task
     std::shared_ptr<SignalBlock> force_map_ptr;
     std::shared_ptr<SignalBlock> controller_ptr;
@@ -200,6 +199,7 @@ int main(int argc, char **argv)
         ft_handler.get_latest_wrench(wrench_offset_);
         ft_handler.set_wrench_offset(wrench_offset_);
         // from external wrench_current to joint torque
+        robot_ptr->SetActiveDOFValues(jnt_pos_init); // set the robot's initial configuraiton before initializing force projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
         // Cartesian admittance controller is a fir_mino type. The initial position (Cartesian, 3D) is zero.
         // The initial pose is kept fixed.
@@ -220,7 +220,10 @@ int main(int argc, char **argv)
         node_handle.getParam(filter_path + "/MB2", MB2);
         controller_ptr = std::make_shared<FIRsrfb>(T, ny, nu, L, MB2);
         // Inverse Kinematics: Converts Cartesian signals to joint coordinates
-        position_map_ptr = std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr, manip_name, jnt_pos_init);
+        double gam, gam2;  // weights for regulation of dq, and of (q_current - q_init)
+        node_handle.param<double>("/" + controller_id + "/gam", gam, 0.01);
+        node_handle.param<double>("/" + controller_id + "/gam2", gam2, 0.001);
+        position_map_ptr = std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr, manip_name, jnt_pos_init, gam, gam2);
     }
     else {
         ROS_ERROR_STREAM("controller type not recognized! Quitting.");
