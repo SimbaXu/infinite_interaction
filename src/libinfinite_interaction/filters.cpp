@@ -57,7 +57,7 @@ void InfInteraction::JointTorqueFromWrenchProjector::set_state(const dVector &x_
 }
 
 // ControllerCollection
-InfInteraction::ControllerCollection::ControllerCollection(std::vector<std::shared_ptr<LTI> > controllers_):
+InfInteraction::ControllerCollection::ControllerCollection(std::vector<std::shared_ptr<SignalBlock> > controllers_):
 controllers(controllers_) {}
 
 dVector InfInteraction::ControllerCollection::compute(const dVector &y_n) {
@@ -176,19 +176,28 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     int nWSR = 100;
     qpOASES::returnValue ret = qp_instance.init(H.data(), g.data(), NULL, dqmin.data(), dqmax.data(), NULL, NULL, nWSR, 0);
     dVector dq(6);
+
+    // check result and set joint command
+    dVector jnt_pos_cmd;
     if (ret == qpOASES::returnValue::SUCCESSFUL_RETURN){
         qpOASES::real_t dq_opt[6];
         qp_instance.getPrimalSolution(dq_opt);
         for(int i=0; i < 6; ++i) dq[i] = dq_opt[i];
+        for(unsigned int i=0; i < 6; i ++){
+            jnt_pos_cmd.push_back(jnt_pos_current[i] + dq[i]);
+        }
+        // joint limits are satisfied by the optimization parameters
+
+        // check for collision
+
     }
     else {
-        ROS_WARN_STREAM("Optimization with qpOASES fails. Setting dq to zero.");
-        std::fill(dq.begin(), dq.end(), 0);
+        ROS_WARN_STREAM("[Optimization fails] Keeping the robot at its current position.");
+        for(unsigned int i=0; i < 6; i ++){
+            jnt_pos_cmd.push_back(jnt_pos_current[i]);
+        }
     }
-    dVector jnt_pos_cmd;
-    for(unsigned int i=0; i < 6; i ++){
-        jnt_pos_cmd.push_back(jnt_pos_current[i] + dq[i]);
-    }
+
     return jnt_pos_cmd;
 }
 

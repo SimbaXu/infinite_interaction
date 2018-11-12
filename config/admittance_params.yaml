@@ -1,5 +1,5 @@
 # This parameter selects the active controller
-active_controller: joint_admittance_controller
+active_controller: cartesian_3D_controller
 
 # common parameters specific to the robot
 scene_path: robots/denso_ft_sensor_gripper.robot.xml

@@ -18,11 +18,24 @@
 typedef std::vector<double> dVector;
 typedef std_msgs::Float64MultiArray MultiArrayMsg;
 
+inline double MIN(double x, double y)
+{
+    return x > y ? y : x;
+}
+
+
+inline double MAX(double x, double y)
+{
+    return x > y ? x : y;
+}
+
+
+
 // TODO: Rename this class to something more appropriate
 // A generic Base class for a discrete-time processing "block" that receives at each time
 // step a vector input and produces a vector output. In general, most controllers, kinematic
 // maps, force maps implemented in this package are child classes of this class.
-class LTI {
+class SignalBlock {
 public:
     // NOTE: virtual method allows derived class to call its implementation,
     // instead of the base class implementation.
@@ -34,14 +47,14 @@ public:
     // virtual destructor allows Derived Classes to destroy its internal
     // states. This is always recommend when polymorphism is needed.
     // https://stackoverflow.com/questions/461203/when-to-use-virtual-destructors
-    virtual ~LTI() {};
+    virtual ~SignalBlock() {};
 };
 
 
 namespace InfInteraction{
 
 // Project measured wrench to each joint torque.
-class JointTorqueFromWrenchProjector: public LTI {
+class JointTorqueFromWrenchProjector: public SignalBlock {
     OpenRAVE::RobotBasePtr robot_ptr;
     OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr;
     dVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
@@ -64,7 +77,7 @@ public:
 /*! Project measured external acting wrench to Cartesian workspace
  *
  */
-class Wrench2CartForceProjector: public LTI {
+class Wrench2CartForceProjector: public SignalBlock {
     OpenRAVE::Transform T_wee;
 public:
     Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
@@ -76,16 +89,16 @@ public:
 /*A collection of controller. Used to implement Joint Admittance controller, where each
  * joint is controlled individually.
  */
-class ControllerCollection: public LTI {
-    std::vector<std::shared_ptr<LTI > > controllers;
+class ControllerCollection: public SignalBlock {
+    std::vector<std::shared_ptr<SignalBlock > > controllers;
 public:
-    ControllerCollection(std::vector<std::shared_ptr<LTI > > controllers_);
+    ControllerCollection(std::vector<std::shared_ptr<SignalBlock > > controllers_);
     dVector compute(const dVector & y_n);
     void set_state(const dVector & x_n);
 };
 
 // A Block that simply offset the input by an initially given vector.
-class SimpleOffset: public LTI {
+class SimpleOffset: public SignalBlock {
     dVector offset;
 public:
     SimpleOffset(const dVector & offset_);
@@ -103,7 +116,7 @@ public:
  * applications in which the robot moves, which basically are every applications, users should call set_state
  * and update jnt_pos_current before calling compute.
  */
- class CartPositionTracker: public LTI {
+ class CartPositionTracker: public SignalBlock {
      dVector jnt_pos_current  /* Current robot joint position */ ;
      OpenRAVE::RaveVector<OpenRAVE::dReal>
              quat_init, /*Initial orientation*/
@@ -211,7 +224,7 @@ public:
  * 
  * L:=[b0 * I2, b1 * I2, b2 * I2] and MB2:=[0*I2, a1*I2, a2*I2]
  */
-class FIRsrfb: public LTI {
+class FIRsrfb: public SignalBlock {
     unsigned int T, ny, nu, /*FIR banks shape*/
             yidx = 0, uidx = 0, ybank_sz, ubank_sz;  /*Current index of y[n][0] and u[n][0] respectively.*/
     dVector L, MB2,   /*FIR coefficients in row-order*/
@@ -238,7 +251,7 @@ public:
  * The filter is constructed by two arrays: the numeration and the denominator.
  * In the following, x[n] is the input while y[n] is the output.
  */
-class DiscreteTimeFilter: public LTI {
+class DiscreteTimeFilter: public SignalBlock {
     /*! Order of the filter. Is basically the order of the denominator. */
     int order;
     /*! Current index. */

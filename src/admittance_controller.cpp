@@ -130,9 +130,9 @@ int main(int argc, char **argv)
 
 
     // Initialize controlling blocks for the given task
-    std::shared_ptr<LTI> force_map_ptr;
-    std::shared_ptr<LTI> controller_ptr;
-    std::shared_ptr<LTI> position_map_ptr;
+    std::shared_ptr<SignalBlock> force_map_ptr;
+    std::shared_ptr<SignalBlock> controller_ptr;
+    std::shared_ptr<SignalBlock> position_map_ptr;
     if (controller_type == "joint_admittance"){
         // set reference wrench_current
         std::vector<double> wrench_offset;
@@ -158,7 +158,7 @@ int main(int argc, char **argv)
         // from external wrench_current to joint torque
         force_map_ptr = std::make_shared<InfInteraction::JointTorqueFromWrenchProjector>(robot_ptr, ft_name);
         // Init Joint Controllers, then throw 'em in a Controller Collection
-        std::vector<std::shared_ptr<LTI > > jnt_controllers;
+        std::vector<std::shared_ptr<SignalBlock > > jnt_controllers;
         for (int i = 0; i < 6; ++i) {
             std::string jnt_filter_path, jnt_filter_type;
             node_handle.getParam("j" + std::to_string(i + 1) + "/filter", jnt_filter_path);

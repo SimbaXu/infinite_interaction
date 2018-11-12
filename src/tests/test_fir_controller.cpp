@@ -234,9 +234,9 @@ TEST(FIR, badinput_wrongshape_L){
 
 
 
-// create a vector of shared_ptr<LTI> that points to DiscreteTimeFilter or FIRsrfb
+// create a vector of shared_ptr<SignalBlock> that points to DiscreteTimeFilter or FIRsrfb
 TEST(LTI, basic){
-    typedef std::shared_ptr<LTI> LTI_ptr;
+    typedef std::shared_ptr<SignalBlock> LTI_ptr;
     std::vector<LTI_ptr> ctrl_vecptr;
     ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {1}, dVector {1, -1}));
     ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {0}, dVector {1, -0.99}, 10));

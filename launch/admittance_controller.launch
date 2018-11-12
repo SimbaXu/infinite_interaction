@@ -7,12 +7,12 @@
   <!-- Load `super`: the controller in testing. Note: to use this controller, change active controller for J3 in admittance_params.yaml to fir_siso/super -->
   <rosparam command="load" file="$(find infinite_interaction)/config/super.yaml"/>
   <rosparam>
-    viewer: false
-    joint_admittance_controller:
+    admittance_controller:
         debug: true
-    <!-- if true, turn on debug mode; additional
-	 data will be published to debug topics-->
+        viewer: false
+    <!-- if true, turn on debug mode; additional data will be published to debug topics-->
   </rosparam>
-  <node name="joint_admittance_controller" pkg="infinite_interaction" type="joint_admittance_controller" output="screen"/>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find infinite_interaction)/config/rosconsole.conf"/>
+  <node name="admittance_controller" pkg="infinite_interaction" type="joint_admittance_controller" output="screen"/>
 
 </launch>
