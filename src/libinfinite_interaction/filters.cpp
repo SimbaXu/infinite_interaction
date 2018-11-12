@@ -163,12 +163,15 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     Eigen::Matrix<double, 6, 1> g;
     g = - 2 * J_trans.transpose() * dpos - 2 * J_rot.transpose() * dquat;
 
-    // Form constraints: TODO: include constraints
-    dVector dqmin(6), dqmax(6);
-    std::fill(dqmin.begin(), dqmin.end(), -0.1);
-    std::fill(dqmax.begin(), dqmax.end(),  0.1);
+    // Form fixed bounds -0.1 <= dq <= 0.1 and joint limits constraints
+    dVector dqmin(6), dqmax(6), qlow, qhigh;
+    robot_ptr->GetActiveDOFLimits(qlow, qhigh);
+    for(int i=0; i < 6; i++){
+        dqmin[i] = MAX(qlow[i] - jnt_pos_current[i], -0.1);
+        dqmax[i] = MIN(qhigh[i] - jnt_pos_current[i], 0.1);
+    }
 
-    // Form problem
+    // Form optimization problem and solve
     qpOASES::Options options;
     options.printLevel = qpOASES::PL_LOW;
     qpOASES::SQProblem qp_instance(6, 0);
