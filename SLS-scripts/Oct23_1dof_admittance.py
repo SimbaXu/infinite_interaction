@@ -7,6 +7,7 @@ import SLSsyn as Ss
 import yaml
 import os.path
 from scipy.linalg import block_diag
+import scipy.sparse as sparse
 
 dT = 0.008
 s = co.tf([1, 0], [1])
@@ -276,10 +277,10 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
         R[:nx, :] == 0, M[:nu, :] == 0, N[:nx, :] == 0,
     ]
     # 20a: t20a_1 R - t20a_2 R - t20a_3 M = t20a_4
-    t20a_1 = np.zeros((T * nx, T * nx))
-    t20a_2 = np.zeros((T * nx, T * nx))
-    t20a_3 = np.zeros((T * nx, T * nu))
-    t20a_4 = np.zeros((T * nx, nx))
+    t20a_1 = sparse.lil_matrix((T * nx, T * nx))
+    t20a_2 = sparse.lil_matrix((T * nx, T * nx))
+    t20a_3 = sparse.lil_matrix((T * nx, T * nu))
+    t20a_4 = sparse.lil_matrix((T * nx, nx))
     for n in range(T):
         if n != T - 1:
             t20a_1[n * nx: (n + 1) * nx, (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
@@ -294,7 +295,7 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
 
     # 20b: t20a_1 R - R * A - N C2 == t20a_4
     # 20b-lower: t20b_1 M - M * A - L * C2 == 0
-    t20b_1 = np.zeros((T * nu, T * nu))
+    t20b_1 = sparse.lil_matrix((T * nu, T * nu))
     for n in range(T):
         if n != T - 1:
             t20b_1[n * nu: n * nu + nu, (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
@@ -307,9 +308,9 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     )
 
     # mapping from exo input to control output
-    C1_blk = block_diag(*[C1] * T)
-    D12_blk = block_diag(*[D12] * T)
-    D11_blk = np.zeros((T * ny_out, nu_exo))
+    C1_blk = sparse.block_diag([C1] * T)
+    D12_blk = sparse.block_diag([D12] * T)
+    D11_blk = sparse.lil_matrix((T * ny_out, nu_exo))
     D11_blk[:ny_out, :nu_exo] = D11
     H = C1_blk * R * B1 + D12_blk * M * B1 + C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
 

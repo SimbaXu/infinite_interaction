@@ -63,9 +63,7 @@ def get_partitioned_mats(P, nu, ny):
 
 
 def dft_matrix(N):
-    """ Return W.
-
-    For a complex sequence x, we have: DFT{x} = W x
+    """ Return W s.t. DFT{x} = W x
     """
     W0 = np.exp(- 2j * np.pi / N)
     W = np.ones((N, N), dtype=complex)
