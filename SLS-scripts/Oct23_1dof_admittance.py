@@ -128,7 +128,7 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
     T_forced, Y_forced, _ = co.forced_response(H, T_forced, F_forced)
 
     # step response
-    fig, axs = plt.subplots(2, 2)
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
     axs[0, 0].plot(T_step, y_step[0, :], label='Hd(t)*u(t)')
     axs[0, 0].plot(T_forced, Y_forced[0, :], label='resp to const-jerk')
     axs[0, 0].plot([0, Tr, Tr, 10], [0, 0, 0.98 * dss, 0.98 * dss], '--', c='gray')
@@ -464,19 +464,19 @@ def main():
     # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
     freqs_bnd_yn = [1e-2, 3.0, 20, 50, 255]  # rad
     mag_bnd_yn = [-20, -20, -20, -94, -130]  # db
-    # Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
-    #                                        freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-    #                                        freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-    #                                        m=1.5, b=24, k=60, T_delay=7)
+    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
+                                           freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+                                           m=1.5, b=24, k=60, T_delay=7)
 
     # # test/analysis
     Ptf_test = plant(Hgain=50, Hdelay=0.05)
     Pssd_test = co.c2d(Ss.tf2ss(Ptf_test, minreal=True), dT)
-    # if Asls is not None:
-    #     analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
-    #              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-    #              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-    #              m=1.5, b=24, k=60)
+    if Asls is not None:
+        analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
+                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+                 m=1.5, b=24, k=60)
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
