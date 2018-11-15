@@ -8,6 +8,7 @@ class MatlabEngine(object):
 
     """
     matlab_engine_instance = None
+    loaded_matlab = False
     def __init__(self):
         if MatlabEngine.matlab_engine_instance is None:
             try:
@@ -46,6 +47,13 @@ def impulse2tf(M, dT):
 
 def get_partitioned_mats(P, nu, ny):
     """ Return the partitioned matrices of P.
+
+    Args:
+        P (control.ss): A state-space transfer function.
+
+    Returns:
+        ([np.matrix]): A, B1, B2, C1, C2, D11, D12, D21, D22
+
     """
     if type(P) != co.StateSpace:
         raise ValueError('P needs to be a StateSpace system')
@@ -123,6 +131,15 @@ def mminreal(P):
     """ Matlab Engine based minreal.
     """
     raise NotImplementedError
+
+
+def tf2ss(P, minreal=False, via_matlab=True):
+    if via_matlab:
+        return mtf2ss(P, minreal)
+    else:
+        Pss = co.tf2ss(P)
+        Pss = Pss.minreal()
+        return Pss
 
 
 def mtf2ss(P, minreal=False):

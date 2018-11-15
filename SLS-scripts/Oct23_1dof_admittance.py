@@ -1,5 +1,4 @@
 import numpy as np
-import matlab.engine
 import control as co
 import matplotlib.pyplot as plt
 import cvxpy as cvx
@@ -414,7 +413,7 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     MB2_tf = co.tf(MB2_value[0, 0], fir_den, dT)
     L_tf = co.tf(L_value[0, 0], fir_den, dT)
     K = co.feedback(1, MB2_tf, sign=-1) * L_tf
-    K = Ss.mtf2ss(K, minreal=True)
+    K = Ss.tf2ss(K, minreal=True)
 
     # response mapping
     Rval = np.array([R[n * nx: (n + 1) * nx, :].value for n in range(T)]).reshape(-1, nx, nx)
@@ -455,7 +454,7 @@ def form_convolutional_matrix(input_signal, T):
 
 def main():
     Ptf_design = plant(Hdelay=0.05, Hgain=50)
-    Pss_design = Ss.mtf2ss(Ptf_design, minreal=True)
+    Pss_design = Ss.tf2ss(Ptf_design, minreal=True)
     Pssd_design = co.c2d(Pss_design, dT)
 
     # synthesize controller
@@ -465,19 +464,19 @@ def main():
     # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
     freqs_bnd_yn = [1e-2, 3.0, 20, 50, 255]  # rad
     mag_bnd_yn = [-20, -20, -20, -94, -130]  # db
-    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
-                                           freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-                                           freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                                           m=1.5, b=24, k=60, T_delay=7)
+    # Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
+    #                                        freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+    #                                        freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+    #                                        m=1.5, b=24, k=60, T_delay=7)
 
-    # test/analysis
+    # # test/analysis
     Ptf_test = plant(Hgain=50, Hdelay=0.05)
-    Pssd_test = co.c2d(Ss.mtf2ss(Ptf_test, minreal=True), dT)
-    if Asls is not None:
-        analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
-                 freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
-                 freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
-                 m=1.5, b=24, k=60)
+    Pssd_test = co.c2d(Ss.tf2ss(Ptf_test, minreal=True), dT)
+    # if Asls is not None:
+    #     analysis(Pssd_test, Asls, internal_data=internal_data, Tr=1.0, controller_name='SLS',
+    #              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
+    #              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
+    #              m=1.5, b=24, k=60)
 
     analysis(Pssd_test, A1, Tr=1.0, controller_name='admittance',
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
