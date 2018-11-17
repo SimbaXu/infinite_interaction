@@ -17,14 +17,18 @@ def load_atomic_pool(Pssd_design):
     Args:
         Pssd_design(tf.ss): A discrete-time state-space system.
     """
+    s = co.tf([1, 0], [1])
     ctrl_pool = [
         # co.tf([1], [0.1, 1, 1]),  # this controller should be unstable
-        co.tf([1], [1, 4, 6]),
-        co.tf([1], [0.2, 3, 2]),
-        co.tf([1], [2, 5, 10]),
-        co.tf([1], [0.2, 4, 6]),
-        co.tf([1], [0.1, 6, 6]),
+        1 / (s**2 + 4 * s + 6),
+        1 / (0.2 * s**2 + 3 * s + 2),
+        1 / (2 * s**2 + 5 * s + 10),
+        1 / (0.2 * s**2 + 4 * s + 6),
+        1 / (0.1 * s**2 + 6 * s + 6),
         co.tf([0], [1]),  # zero controller
+        5e-3,
+        5e-3 * (1 + s) / (1 + 1e-3 * s),
+        5e-3 * (1 + s) / (1 - s),
         # co.tf([0.001], [1]),
         # co.tf([0.01], [1, 1])
     ]
@@ -160,9 +164,9 @@ class AtomicFIRController(object):
         self.nxc = nxc
         self.nu = nu
         self.ny = ny
+        self.nw = Pssd_design.inputs - A1dss.outputs
+        self.nz = Pssd_design.outputs - A1dss.inputs
 
-        # executable controller
-        self.exec_ctrl = A1dss
 
         # closed-loop response, check stability
         Pssd_cl = Pssd_design.lft(A1dss)
@@ -175,12 +179,19 @@ class AtomicFIRController(object):
         else:
             print(" -- Closed-loop system STABLE. w_max={:}".format(wmax))
 
+        # control systems
+        self.plant_ol = Pssd_design
+        self.plant_cl = Pssd_cl
+        self.exec_ctrl = A1dss
+
+        # matrix impulse response
         A, B1, B2, C1, C2, D11, D12, D21, D22 = map(
             np.array, Ss.get_partitioned_mats(Pssd_design, nu, ny))
         Ak, Bk, Ck, Dk = A1dss.A, A1dss.B, A1dss.C, A1dss.D
         assert np.all(D22 == 0)
 
-        # Concatenate system matrices to find the matrices of the ss rep of the impulse response mapping
+        # Concatenate system matrices to find the matrices of the ss
+        # rep of the impulse response mapping
         # [R N] =   A_cb  |  B_cb
         # [M L]     ------|-------
         #           C_cb  |  D_cb
@@ -192,32 +203,46 @@ class AtomicFIRController(object):
                          [Dk.dot(C2), Ck]])
         D_cb = np.block([[np.zeros((nx, nx)), np.zeros((nx, ny))],
                          [np.zeros((nu, nx)), Dk]])
-        resp_dss = co.ss(A_cb, B_cb, C_cb, D_cb, dT)
+        P_resp_dss = co.ss(A_cb, B_cb, C_cb, D_cb, dT)
 
-        # Compute impulse responses of the matrices
+        # Compute impulse responses of the matrices R, N, M, L
         Tarr = np.arange(0, T, dT)  # 5 sec horizon
         NT = Tarr.shape[0]
-        impulses = []
-        for i in range(nx + ny):
+        mtrx_impulses = []
+        for i in range(self.nx + self.ny):
             _, yarr = co.impulse_response(
-                resp_dss, Tarr, input=i, transpose=True)
-            impulses.append(yarr)
-        impulse_full = np.stack(impulses, axis=2)
+                P_resp_dss, Tarr, input=i, transpose=True)
+            if np.linalg.norm(yarr[-1]) > 1e-10:
+                raise(ValueError("Impulse response is non-zero at the last time-step! "
+                                 "Consider increasing horizont T."))
+            mtrx_impulses.append(yarr)
+        mtrx_impulses = np.stack(mtrx_impulses, axis=2)
 
         # Individual responses
-        self.R = impulse_full[:, :nx, :nx]
-        self.N = impulse_full[:, :nx, nx:nx + ny]
-        self.M = impulse_full[:, nx:nx + nu, :nx]
-        self.L = impulse_full[:, nx:nx + nu, nx:nx + ny]
+        self.R = mtrx_impulses[:, :self.nx, :self.nx]
+        self.N = mtrx_impulses[:, :self.nx, self.nx:self.nx + self.ny]
+        self.M = mtrx_impulses[:, self.nx:self.nx + self.nu, :self.nx]
+        self.L = mtrx_impulses[:, self.nx:self.nx + self.nu, self.nx:self.nx + self.ny]
         self.MB2 = self.M@B2
 
-        # Output responses H (from control input w to output z)
-        _, self.H = co.impulse_response(Pssd_cl, Tarr, transpose=True)
-        _, self.H_step = co.step_response(Pssd_cl, Tarr, transpose=True)
+        # Output Impulse responses H (from control input w to output z)
+        output_impulses = []
+        for i in range(self.nw):
+            _, yarr = co.impulse_response(
+                Pssd_cl, Tarr, input=i, transpose=True
+            )
+            if np.linalg.norm(yarr[-1]) > 1e-10:
+                raise(ValueError("Impulse response is non-zero at the last time-step! "
+                                 "Consider increasing horizont T."))
+            output_impulses.append(yarr)
+        self.H = np.stack(output_impulses, axis=2)
 
         # frequency response of the mapping
         W = Ss.dft_matrix(self.NT)
-        self.H_fft = W@self.H
+        self.H_fft = np.zeros_like(self.H) * 1j
+        for i in range(self.nw):
+            for j in range(self.nz):
+                self.H_fft[:, i, j] = W@self.H[:, i, j]
         return self
 
     def get_executable_controller(self):
@@ -305,6 +330,8 @@ def SLS_synthesis2(atoms, m, b, k, freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -1
 
 
 def proc_ctrl(A1c, dT=0.008):
+    if isinstance(A1c, float) or isinstance(A1c, int):
+        A1c = co.tf([1], [1]) * A1c
     A1d = co.c2d(A1c, dT)
     A1dss = Ss.mtf2ss(A1d, minreal=True)
     return A1dss
