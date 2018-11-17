@@ -103,9 +103,14 @@ def get_num_dens(Plist):
             if type(Plist[i][j]) == co.xferfcn.TransferFunction:
                 nums[i].append(Plist[i][j].num[0][0])
                 dens[i].append(Plist[i][j].den[0][0])
-            else:
-                nums[i].append([0])
+
+            # other than tf function, must be a float
+            elif isinstance(Plist[i][j], float) or isinstance(Plist[i][j], int):
+                nums[i].append([float(Plist[i][j])])
                 dens[i].append([1])
+            else:
+                raise(ValueError("Input: {:} not understood. Must be a transfer function or a numeric value."))
+                
     return nums, dens
 
 
