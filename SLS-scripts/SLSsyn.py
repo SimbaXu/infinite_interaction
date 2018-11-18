@@ -13,6 +13,7 @@ class MatlabEngine(object):
     """
     matlab_engine_instance = None
     loaded_matlab = False
+
     def __init__(self):
         if MatlabEngine.matlab_engine_instance is None:
             try:
@@ -59,7 +60,7 @@ def get_partitioned_mats(P, nu, ny):
         ([np.matrix]): A, B1, B2, C1, C2, D11, D12, D21, D22
 
     """
-    if type(P) != co.StateSpace:
+    if not isinstance(P, co.StateSpace):
         raise ValueError('P needs to be a StateSpace system')
     A = P.A
     B1 = P.B[:, :P.inputs - nu]
@@ -104,7 +105,7 @@ def get_num_dens(Plist):
         nums.append([])
         dens.append([])
         for j in range(Nin):
-            if type(Plist[i][j]) == co.xferfcn.TransferFunction:
+            if isinstance(Plist[i][j], co.xferfcn.TransferFunction):
                 nums[i].append(Plist[i][j].num[0][0])
                 dens[i].append(Plist[i][j].den[0][0])
 
@@ -113,8 +114,9 @@ def get_num_dens(Plist):
                 nums[i].append([float(Plist[i][j])])
                 dens[i].append([1])
             else:
-                raise(ValueError("Input: {:} not understood. Must be a transfer function or a numeric value."))
-                
+                raise(ValueError(
+                    "Input: {:} not understood. Must be a transfer function or a numeric value."))
+
     return nums, dens
 
 
@@ -167,8 +169,10 @@ def mtf2ss(P, minreal=False):
     den_cmd = '{'
     for i in range(P.outputs):
         for j in range(P.inputs):
-            eng.workspace['num{:d}{:d}'.format(i, j)] = matlab.double(P.num[i][j].tolist())
-            eng.workspace['den{:d}{:d}'.format(i, j)] = matlab.double(P.den[i][j].tolist())
+            eng.workspace['num{:d}{:d}'.format(
+                i, j)] = matlab.double(P.num[i][j].tolist())
+            eng.workspace['den{:d}{:d}'.format(
+                i, j)] = matlab.double(P.den[i][j].tolist())
             num_cmd += 'num{:d}{:d}, '.format(i, j)
             den_cmd += 'den{:d}{:d}, '.format(i, j)
         num_cmd += ';'
@@ -199,7 +203,8 @@ class SLS:
     """ A collection of functions used in SLS synthesis.
     """
 
-    def print_controller(L, MB2, file_name='super.yaml', controller_name='super'):
+    def print_controller(L, MB2, file_name='super.yaml',
+                         controller_name='super'):
         """ Print the coefficients to yaml format.
         """
         CONFIG_DIR = "/home/hung/catkin_ws/src/infinite_interaction/config"
@@ -234,7 +239,8 @@ class SLS:
 
         """
         nx = Pssd.states
-        A, B1, B2, C1, C2, D11, D12, D21, D22 = get_partitioned_mats(Pssd, nu, ny)
+        A, B1, B2, C1, C2, D11, D12, D21, D22 = get_partitioned_mats(
+            Pssd, nu, ny)
 
         ny_out, nu_exo = D11.shape  # control output dimension, also known as nz, nw
 
@@ -256,7 +262,8 @@ class SLS:
         t20a_4 = sparse.lil_matrix((T * nx, nx))
         for n in range(T):
             if n != T - 1:
-                t20a_1[n * nx: (n + 1) * nx, (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
+                t20a_1[n * nx: (n + 1) * nx,
+                       (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
             t20a_2[n * nx: (n + 1) * nx, n * nx: (n + 1) * nx] = A
             t20a_3[n * nx: (n + 1) * nx, n * nu: (n + 1) * nu] = B2
             if n == 0:
@@ -271,7 +278,8 @@ class SLS:
         t20b_1 = sparse.lil_matrix((T * nu, T * nu))
         for n in range(T):
             if n != T - 1:
-                t20b_1[n * nu: n * nu + nu, (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
+                t20b_1[n * nu: n * nu + nu,
+                       (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
 
         constraints.extend(
             [
@@ -285,8 +293,38 @@ class SLS:
         D12_blk = sparse.block_diag([D12] * T)
         D11_blk = sparse.lil_matrix((T * ny_out, nu_exo))
         D11_blk[:ny_out, :nu_exo] = D11
-        H = C1_blk * R * B1 + D12_blk * M * B1 + C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
+        H = C1_blk * R * B1 + D12_blk * M * B1 + \
+            C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
 
         return R, N, M, L, H, constraints
 
+    def form_convolutional_matrix(input_signal, T):
+        """Find the convolutional matrix for computing convolution.
 
+        In particular, consider the convolution operation, which can
+        be re-written as matrix multiplication.
+
+        u * w = U w
+
+        where U is the convolutional matrix.
+
+        Consider a signal x, the output signal y = input_signal * x can be
+        computed as the matrix multiplication y = [conv matrix of input_signal] x.
+
+        Let input_signal = u[0],...,u[T-1], the convolutional matrix is
+        given by:
+
+        [u[0]                ]
+        [u[1], u[0],         ]
+        [u[2], u[1], u[0], ..]
+        ...
+        [u[T-1], ..,     u[0]]
+        ...
+        [u[N-1], ...         ]
+
+        """
+        N = input_signal.shape[0]
+        conv_mat = np.zeros((N, T))
+        for i in range(T):
+            conv_mat[i:, i] = input_signal[:N - i]
+        return conv_mat
