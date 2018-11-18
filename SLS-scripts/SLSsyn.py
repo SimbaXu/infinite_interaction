@@ -1,6 +1,10 @@
 import numpy as np
 import matlab.engine
 import control as co
+import yaml
+import os
+import cvxpy as cvx
+import scipy.sparse as sparse
 
 
 class MatlabEngine(object):
@@ -190,5 +194,99 @@ def mtf2ss(P, minreal=False):
     else:
         return co.ss(A, B, C, D, P.dt)
 
+
+class SLS:
+    """ A collection of functions used in SLS synthesis.
+    """
+
+    def print_controller(L, MB2, file_name='super.yaml', controller_name='super'):
+        """ Print the coefficients to yaml format.
+        """
+        CONFIG_DIR = "/home/hung/catkin_ws/src/infinite_interaction/config"
+        file_dir = os.path.join(CONFIG_DIR, file_name)
+        # convert to simple python float before dumping
+        L = list([float(L_) for L_ in np.array(L).flatten()])
+        MB2 = list([float(L_) for L_ in np.array(MB2).flatten()])
+        ny = 1
+        nu = 1
+        T = len(L)
+        ctrl_dict = {'T': T, 'ny': ny, 'nu': nu, 'L': L, 'MB2': MB2}
+        output_dict = {
+            'fir_siso': {
+                controller_name: ctrl_dict
+            }
+        }
+        with open(file_dir, 'w') as f:
+            yaml.dump(output_dict, f, default_flow_style=False)
+        print("-- Wrote controller to {:}".format(file_dir))
+
+    def form_SLS_response_matrices(Pssd, nu, ny, T):
+        """Form response matrices and output matrices.
+
+        Return matrices {R, N, M, L} respectively and output matrices
+        {H}. Also return all achievability constraints that guarantee
+        the mappings are valid.
+
+        Return:
+            R, N, M, L (cvxpy.Variables): Closed-loop reponse matrices.
+            H (cvxpy.Variable): Closed-loop output from exogeneous input to exogeneous output.
+            constraints (list of cvxpy.Constraint): Achievability constraints.
+
+        """
+        nx = Pssd.states
+        A, B1, B2, C1, C2, D11, D12, D21, D22 = get_partitioned_mats(Pssd, nu, ny)
+
+        ny_out, nu_exo = D11.shape  # control output dimension, also known as nz, nw
+
+        # variables
+        R = cvx.Variable((T * nx, nx))
+        N = cvx.Variable((T * nx, ny))
+        M = cvx.Variable((T * nu, nx))
+        L = cvx.Variable((T * nu, ny))
+
+        # constraints
+        # 20c
+        constraints = [
+            R[:nx, :] == 0, M[:nu, :] == 0, N[:nx, :] == 0,
+        ]
+        # 20a: t20a_1 R - t20a_2 R - t20a_3 M = t20a_4
+        t20a_1 = sparse.lil_matrix((T * nx, T * nx))
+        t20a_2 = sparse.lil_matrix((T * nx, T * nx))
+        t20a_3 = sparse.lil_matrix((T * nx, T * nu))
+        t20a_4 = sparse.lil_matrix((T * nx, nx))
+        for n in range(T):
+            if n != T - 1:
+                t20a_1[n * nx: (n + 1) * nx, (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
+            t20a_2[n * nx: (n + 1) * nx, n * nx: (n + 1) * nx] = A
+            t20a_3[n * nx: (n + 1) * nx, n * nu: (n + 1) * nu] = B2
+            if n == 0:
+                t20a_4[:nx, :nx] = np.eye(nx)
+        constraints.extend(
+            [t20a_1 * R - t20a_2 * R - t20a_3 * M == t20a_4,
+             t20a_1 * N - t20a_2 * N - t20a_3 * L == 0]
+        )
+
+        # 20b: t20a_1 R - R * A - N C2 == t20a_4
+        # 20b-lower: t20b_1 M - M * A - L * C2 == 0
+        t20b_1 = sparse.lil_matrix((T * nu, T * nu))
+        for n in range(T):
+            if n != T - 1:
+                t20b_1[n * nu: n * nu + nu, (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
+
+        constraints.extend(
+            [
+                t20a_1 * R - R * A - N * C2 == t20a_4,
+                t20b_1 * M - M * A - L * C2 == 0
+            ]
+        )
+
+        # mapping from exo input to control output
+        C1_blk = sparse.block_diag([C1] * T)
+        D12_blk = sparse.block_diag([D12] * T)
+        D11_blk = sparse.lil_matrix((T * ny_out, nu_exo))
+        D11_blk[:ny_out, :nu_exo] = D11
+        H = C1_blk * R * B1 + D12_blk * M * B1 + C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
+
+        return R, N, M, L, H, constraints
 
 

@@ -196,29 +196,7 @@ def const_jerk_input(duration=10, accel_duration=0.6, f_max=4, f_ss=1.0, dT=dT):
     return t_arr, np.array(f_arr)
 
 
-def print_controller(L, MB2, file_name='super.yaml', controller_name='super'):
-    """ Print the coefficients to yaml format.
-    """
-    CONFIG_DIR = "/home/hung/catkin_ws/src/infinite_interaction/config"
-    file_dir = os.path.join(CONFIG_DIR, file_name)
-    # convert to simple python float before dumping
-    L = list([float(L_) for L_ in np.array(L).flatten()])
-    MB2 = list([float(L_) for L_ in np.array(MB2).flatten()])
-    ny = 1
-    nu = 1
-    T = len(L)
-    ctrl_dict = {'T': T, 'ny': ny, 'nu': nu, 'L': L, 'MB2': MB2}
-    output_dict = {
-        'fir_siso': {
-            controller_name: ctrl_dict
-        }
-    }
-    with open(file_dir, 'w') as f:
-        yaml.dump(output_dict, f, default_flow_style=False)
-    print("-- Wrote controller to {:}".format(file_dir))
-
-
-def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_signal='step',
+def SLS_synthesis_p1(Pssd, T, regularization=-1, test_signal='step',
                      Mp=1.01, m=0.5, b=10, k=80,
                      freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
                      freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6], T_delay=11):
@@ -242,60 +220,12 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     nu = 1  # 1 dof controller
     ny = 1
 
-    # constants
+    # form response matrices
+    R, N, M, L, H, constraints = Ss.SLS.form_SLS_response_matrices(Pssd, nu, ny, T)
+
+    # # constants
     nx = Pssd.states
     A, B1, B2, C1, C2, D11, D12, D21, D22 = Ss.get_partitioned_mats(Pssd, nu, ny)
-
-    ny_out, nu_exo = D11.shape  # control output dimension
-
-    # variables
-    R = cvx.Variable((T * nx, nx))
-    N = cvx.Variable((T * nx, ny))
-    M = cvx.Variable((T * nu, nx))
-    L = cvx.Variable((T * nu, ny))
-
-    # constraints
-    # 20c
-    constraints = [
-        R[:nx, :] == 0, M[:nu, :] == 0, N[:nx, :] == 0,
-    ]
-    # 20a: t20a_1 R - t20a_2 R - t20a_3 M = t20a_4
-    t20a_1 = sparse.lil_matrix((T * nx, T * nx))
-    t20a_2 = sparse.lil_matrix((T * nx, T * nx))
-    t20a_3 = sparse.lil_matrix((T * nx, T * nu))
-    t20a_4 = sparse.lil_matrix((T * nx, nx))
-    for n in range(T):
-        if n != T - 1:
-            t20a_1[n * nx: (n + 1) * nx, (n + 1) * nx: (n + 2) * nx] = np.eye(nx)
-        t20a_2[n * nx: (n + 1) * nx, n * nx: (n + 1) * nx] = A
-        t20a_3[n * nx: (n + 1) * nx, n * nu: (n + 1) * nu] = B2
-        if n == 0:
-            t20a_4[:nx, :nx] = np.eye(nx)
-    constraints.extend(
-        [t20a_1 * R - t20a_2 * R - t20a_3 * M == t20a_4,
-         t20a_1 * N - t20a_2 * N - t20a_3 * L == 0]
-    )
-
-    # 20b: t20a_1 R - R * A - N C2 == t20a_4
-    # 20b-lower: t20b_1 M - M * A - L * C2 == 0
-    t20b_1 = sparse.lil_matrix((T * nu, T * nu))
-    for n in range(T):
-        if n != T - 1:
-            t20b_1[n * nu: n * nu + nu, (n + 1) * nu: (n + 2) * nu] = np.eye(nu)
-
-    constraints.extend(
-        [
-            t20a_1 * R - R * A - N * C2 == t20a_4,
-            t20b_1 * M - M * A - L * C2 == 0
-        ]
-    )
-
-    # mapping from exo input to control output
-    C1_blk = sparse.block_diag([C1] * T)
-    D12_blk = sparse.block_diag([D12] * T)
-    D11_blk = sparse.lil_matrix((T * ny_out, nu_exo))
-    D11_blk[:ny_out, :nu_exo] = D11
-    H = C1_blk * R * B1 + D12_blk * M * B1 + C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
 
     # select component of H that correspond to the mapping from acting
     # force (and noise) to actual robot displacement (H_yn) and the
@@ -303,36 +233,10 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     H_yn = H[0::2, :]
     H_T = H[1::2, :]
 
-    # constraint in time-domain, if specified.
-    if const_steady > 0:
-        # input signals
-        # step input
-        if test_signal == 'step':
-            input_signal = np.ones(1024)
-        elif test_signal == 'const_jerk':
-            _, input_signal = const_jerk_input(
-                duration=5, accel_duration=0.6, f_max=4, f_ss=1.0)
-        else:
-            # trivial to satisfy
-            input_signal = np.zeros(1024)
-
-        horizon = input_signal.shape[0]
-        conv_mat = form_convolutional_matrix(input_signal, T)
-        upper = np.ones(horizon) * const_steady * Mp
-        lower = np.ones(horizon) * (-0.5)
-        lower[int(Tr / dT):] = const_steady * 0.98
-
-        # constraints.extend([
-        #     conv_mat * H[:, 0] <= upper,
-        #     conv_mat * H[:, 0] >= lower
-        # ])
-
-        # constraints.append(H_yn >= -1e-5)
-        # constraints.append(cvx.sum(H_yn) == const_steady)
-
     # objective: match the impulse response of a given system
     sys_model = co.c2d(co.tf([1], [m, b, k]), dT)
     _, imp_model = co.impulse_response(sys_model, np.arange(T) * dT)
+
     # NOTE: have to use norm, sum_of_squares does not work. The reason
     # is the magnitude of the objective function must not be too
     # small. The optimizer seems to get confuse and simply stop
@@ -344,14 +248,6 @@ def SLS_synthesis_p1(Pssd, T, const_steady=-1, Tr=0.9, regularization=-1, test_s
     # try some regularization
     if regularization > 0:
         reg = regularization * (cvx.norm1(H_yn))
-        # reg = 0
-        # for i in range(T):
-        #     scale = float(i) / T  # increase weight for higher values of i
-        #     reg += scale * regularization * cvx.norm1(L[i])
-        #     reg += scale * regularization * cvx.norm1(M[i] * B2)
-        #     # reg += regularization * cvx.norm1(N[i])
-        #     # reg += regularization * cvx.norm1(R[i])
-
     else:
         reg = cvx.abs(cvx.Variable())
 
@@ -448,7 +344,7 @@ def main():
     # mag_bnd_yn = [-10, -10, -20, -74, -100]  # db
     freqs_bnd_yn = [1e-2, 3.0, 20, 50, 255]  # rad
     mag_bnd_yn = [-20, -20, -20, -94, -130]  # db
-    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 374, 0.0125, Tr=3.0, regularization=1,
+    Asls, internal_data = SLS_synthesis_p1(Pssd_design, 256, regularization=1,
                                            freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
                                            freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
                                            m=1.5, b=24, k=60, T_delay=7)
@@ -470,6 +366,9 @@ def main():
              freqs_bnd_T=freqs_bnd_T, mag_bnd_T=mag_bnd_T,
              freqs_bnd_yn=freqs_bnd_yn, mag_bnd_yn=mag_bnd_yn,
              m=1.5, b=28, k=65)
+
+    # to print controller
+    Ss.SLS.print_controller(internal_data['L'], internal_data['MB2'])
 
     import IPython
     if IPython.get_ipython() is None:

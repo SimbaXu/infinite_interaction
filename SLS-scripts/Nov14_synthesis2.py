@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import cvxpy as cvx
 
 
-def load_atomic_pool(Pssd_design):
+def load_atomic_pool(Pssd_design, T=5):
     """A pool of basis atomic controller.
 
     Will be used for finding an optimal atomic controller via affine
@@ -42,7 +42,7 @@ def load_atomic_pool(Pssd_design):
     atomic_pool = {}
     for i, ctrl in enumerate(ctrl_pool):
         atomic = AtomicFIRController.init_via_simulation(
-            Pssd_design, proc_ctrl(ctrl))
+            Pssd_design, proc_ctrl(ctrl), T=T)
         if atomic is not None:
             atomic.name = "c{:d}".format(i)
             atomic_pool[atomic.name] = atomic
@@ -60,7 +60,7 @@ def main():
     Ptf_design = plant(Hdelay=0.05, Hgain=50)
     Pss_design = Ss.tf2ss(Ptf_design, minreal=True)
     Pssd_design = co.c2d(Pss_design, dT)
-    atomic_pool = load_atomic_pool(Pssd_design)
+    atomic_pool = load_atomic_pool(Pssd_design, T=10)
 
     # frequencies bounds
     freqs_bnd_T = [1e-2, 2.3, 7.3, 25, 357]
@@ -167,7 +167,6 @@ class AtomicFIRController(object):
         self.nw = Pssd_design.inputs - A1dss.outputs
         self.nz = Pssd_design.outputs - A1dss.inputs
 
-
         # closed-loop response, check stability
         Pssd_cl = Pssd_design.lft(A1dss)
         w, q = np.linalg.eig(Pssd_cl.A)
@@ -213,8 +212,9 @@ class AtomicFIRController(object):
             _, yarr = co.impulse_response(
                 P_resp_dss, Tarr, input=i, transpose=True)
             if np.linalg.norm(yarr[-1]) > 1e-10:
-                raise(ValueError("Impulse response is non-zero at the last time-step! "
-                                 "Consider increasing horizont T."))
+                raise(ValueError("Matrix Impulse response has non-zero norm at the last time-step! ({:}) "
+                                 "Consider increasing horizont T. (Current val={:})".format(
+                                     np.linalg.norm(yarr[-1]), T)))
             mtrx_impulses.append(yarr)
         mtrx_impulses = np.stack(mtrx_impulses, axis=2)
 
@@ -231,9 +231,8 @@ class AtomicFIRController(object):
             _, yarr = co.impulse_response(
                 Pssd_cl, Tarr, input=i, transpose=True
             )
-            if np.linalg.norm(yarr[-1]) > 1e-10:
-                raise(ValueError("Impulse response is non-zero at the last time-step! "
-                                 "Consider increasing horizont T."))
+            # no need to check for finite horizon since H is a linear
+            # combination of the matrix responses
             output_impulses.append(yarr)
         self.H = np.stack(output_impulses, axis=2)
 
@@ -329,12 +328,13 @@ def SLS_synthesis2(atoms, m, b, k, freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -1
         return None, None
 
 
-def proc_ctrl(A1c, dT=0.008):
+def proc_ctrl(A1c, dT=0.008, use_matlab=True):
     if isinstance(A1c, float) or isinstance(A1c, int):
         A1c = co.tf([1], [1]) * A1c
     A1d = co.c2d(A1c, dT)
-    A1dss = Ss.mtf2ss(A1d, minreal=True)
+    A1dss = Ss.tf2ss(A1d, minreal=True, via_matlab=use_matlab)
     return A1dss
+
 
 if __name__ == '__main__':
     main()
