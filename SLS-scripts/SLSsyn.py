@@ -225,7 +225,7 @@ class SLS:
             yaml.dump(output_dict, f, default_flow_style=False)
         print("-- Wrote controller to {:}".format(file_dir))
 
-    def form_SLS_response_matrices(Pssd, nu, ny, T):
+    def form_SLS_response_matrices(Pdss, nu, ny, T):
         """Form response matrices and output matrices.
 
         Return matrices {R, N, M, L} respectively and output matrices
@@ -238,9 +238,9 @@ class SLS:
             constraints (list of cvxpy.Constraint): Achievability constraints.
 
         """
-        nx = Pssd.states
+        nx = Pdss.states
         A, B1, B2, C1, C2, D11, D12, D21, D22 = get_partitioned_mats(
-            Pssd, nu, ny)
+            Pdss, nu, ny)
 
         ny_out, nu_exo = D11.shape  # control output dimension, also known as nz, nw
 
@@ -296,6 +296,19 @@ class SLS:
         H = C1_blk * R * B1 + D12_blk * M * B1 + \
             C1_blk * N * D21 + D12_blk * L * D21 + D11_blk
 
+        # debug
+        ctrl = co.c2d(tf2ss(co.tf([5e-3], [1]), minreal=True), 0.008)
+        Rnp, Nnp, Mnp, Lnp = SLS.compute_cl_matrix_responses(Pdss, ctrl, 0.008 * 256)
+        Rnp = Rnp.reshape(*R.shape)
+        Nnp = Nnp.reshape(*N.shape)
+        Mnp = Mnp.reshape(*M.shape)
+        Lnp = Lnp.reshape(*L.shape)
+        # check constraint
+        tmp1 = t20a_1 @ Rnp - t20a_2 @ Rnp - t20a_3 @ Mnp
+        tmp2 = t20a_1 @ Nnp - t20a_2 @ Nnp - t20a_3 @ Lnp
+        tmp3 = t20a_1 @ Rnp - Rnp @ A - Nnp @ C2
+        tmp4 = t20b_1 @ Mnp - Mnp @ A - Lnp @ C2
+
         return R, N, M, L, H, constraints
 
     def form_convolutional_matrix(input_signal, T):
@@ -328,3 +341,57 @@ class SLS:
         for i in range(T):
             conv_mat[i:, i] = input_signal[:N - i]
         return conv_mat
+
+    def compute_cl_matrix_responses(plant, ctrl, Tsim):
+        """ Compute the response mapping.
+
+        Returns:
+            R, N, M, L (array): Each is a 3-dimensionl array: (T, nx, nu)
+        """
+        # Input check
+        if plant.dt != ctrl.dt:
+            raise(ValueError("Plant and controller do not have same sampling time!"))
+        else:
+            dT = plant.dt
+        if not (isinstance(plant, co.StateSpace) or isinstance(ctrl, co.StateSpace)):
+            raise(ValueError("Plant and controller both must be StateSpace!"))
+
+        nu = ctrl.outputs
+        ny = ctrl.inputs
+        nxc = ctrl.states
+        nx = plant.states
+        # form the state-space form of the combined closed-loop mappings transfer function
+        A, B1, B2, C1, C2, D11, D12, D21, D22 = map(
+            np.array, get_partitioned_mats(plant, nu, ny))
+        Ak, Bk, Ck, Dk = ctrl.A, ctrl.B, ctrl.C, ctrl.D
+        assert np.all(D22 == 0)
+
+        # Concatenate system matrices to find the matrices of the ss rep of the impulse response mapping
+        # [R N] =   A_cb  |  B_cb
+        # [M L]     ------|-------
+        #           C_cb  |  D_cb
+        A_cb = np.block([[A + B2.dot(Dk).dot(C2), B2.dot(Ck)],
+                         [Bk.dot(C2), Ak]])
+        B_cb = np.block([[np.eye(nx), B2.dot(Dk)],
+                         [np.zeros((nxc, nx)), Bk]])
+        C_cb = np.block([[np.eye(nx), np.zeros((nx, nxc))],
+                         [Dk.dot(C2), Ck]])
+        D_cb = np.block([[np.zeros((nx, nx)), np.zeros((nx, ny))],
+                         [np.zeros((nu, nx)), Dk]])
+        resp_dss = co.ss(A_cb, B_cb, C_cb, D_cb, dT)
+        # Compute impulse responses of the matrices
+        Tarr = np.arange(0, Tsim, dT)  # 5 sec horizon 
+        NT = Tarr.shape[0]
+        impulses = []
+        for i in range(nx + ny):
+            _, yarr = co.impulse_response(resp_dss, Tarr, input=i, transpose=True)
+            impulses.append(yarr)
+        impulse_full = np.stack(impulses, axis=2)
+
+        # Individual responses
+        R = impulse_full[:, :nx, :nx]
+        N = impulse_full[:, :nx, nx:nx + ny]
+        M = impulse_full[:, nx:nx + nu, :nx]
+        L = impulse_full[:, nx:nx + nu, nx:nx + ny]
+
+        return R, N, M, L
