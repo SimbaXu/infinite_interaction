@@ -6,7 +6,22 @@
 #include <infinite_interaction/infinite_interaction_lib.h>
 
 
-TEST(IIR_scalar, case1){
+
+
+TEST(DiscreteTimeFilter_fir_scalar, case1){
+    dVector taps{0, 1, 2, -1, 0, 0};
+    DiscreteTimeFilter filter (taps);
+    dVector xin{0, 1, 2, 1, 0};
+    dVector y_correct{0, 0, 1, 4, 4, 0, -1, 0, 0};
+
+    // test
+    for(int i=0; i < xin.size(); i++){
+        double y = filter.compute(xin[i]);
+        EXPECT_EQ(y_correct[i], y)<< "Fail at i=" << i;
+    }
+}
+
+TEST(DiscreteTimeFilter_ccde_scalar, case1){
     dVector num {0}, den{1, -0.99};
     DiscreteTimeFilter filter (num, den, 10);
     double y;
@@ -17,7 +32,7 @@ TEST(IIR_scalar, case1){
     EXPECT_NEAR(y, 9.9 * 0.99, 1e-3);
 }
 
-TEST(IIR_scalar, case2){
+TEST(DiscreteTimeFilter_ccde_scalar, case2){
     // implement the filter y[n] - y[n-1] = x[n]
     dVector b{1}, a{1, -1};
     DiscreteTimeFilter filter (b, a, 0);
@@ -31,7 +46,21 @@ TEST(IIR_scalar, case2){
 }
 
 
-TEST(IIR_scalar, order_zero){
+TEST(DiscreteTimeFilter_ccde_scalar, num_longer){
+    dVector b {0, 2, -2}, a{1, 3};
+    DiscreteTimeFilter filter (b, a);
+    dVector xin{0, 1, 2, 3, 4, 3};
+    dVector y_correct{0.,   0.,   2.,  -4.,  14., -40.};
+
+    // test
+    for(int i=0; i < xin.size(); i++){
+        double y = filter.compute(xin[i]);
+        EXPECT_EQ(y_correct[i], y) << "Failed at i = " << i;
+    }
+}
+
+
+TEST(DiscreteTimeFilter_ccde_scalar, order_zero){
     // implement the filter y[n] = -x[n]
     dVector b{-1}, a{1};
     DiscreteTimeFilter filter (b, a, 0);

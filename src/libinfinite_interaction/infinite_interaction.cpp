@@ -4,6 +4,8 @@
 
 #include "infinite_interaction/infinite_interaction_lib.h"
 #include <ros/ros.h>
+#include <include/infinite_interaction/infinite_interaction_lib.h>
+
 
 InfInteraction::TopicDebugger::TopicDebugger(std::string debug_ns_, ros::NodeHandle &node_handle_): debug_ns(debug_ns_), nh(node_handle_){ }
 
@@ -189,10 +191,26 @@ void JointPositionController::set_joint_positions(std::vector<double>& jnt_posit
 
 DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
     n = 0;
-    order = static_cast<int>(a_in.size() - 1);
-    mem_sz = order + 1;
-    assert(order >= 0); // at least a zeroth-order coefficient is expected
-    assert(a_in[0] > 0);  // first coefficient needs to be positive, this might not be necessary though.
+    N = static_cast<int>(a_in.size() - 1);
+    M = static_cast<int>(b_in.size() - 1);
+    assert(N >= 0); // at least a zeroth-order coefficient is expected
+    assert(M >= 0); // at least a zeroth-order coefficient is expected
+    if (N > M){
+        mem_sz = N + 1;
+    } else{
+        mem_sz = M + 1;
+    }
+
+    // check and normalize coefficients
+    assert(a_in[0] != 0);
+    if (a_in[0] != 1){
+        for (int i=0; i < b_in.size(); i++){
+            b_in[i] = b_in[i] / a_in[0];
+        }
+        for (int i=0; i < a_in.size(); i++){
+            a_in[i] = a_in[i] / a_in[0];
+        }
+    }
 
     x_mem.resize(mem_sz);
     y_mem.resize(mem_sz);
@@ -200,32 +218,24 @@ DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_init
         x_mem[i] = 0;
         y_mem[i] = y_initial_val;
     }
-
-    // resize b_in to a vector of size (order + 1) and shift it rightward
-    int size_a = static_cast<int>(b_in.size());
-    for (int i=size_a; i <= order; ++i){
-        b_in.push_back(0);
-    }
     b = b_in;
     a = a_in;
-    assert(b.size() == a.size());
 }
 
 
 
 double DiscreteTimeFilter::compute(double x_n) {
     n++;
-    int deg = order + 1;
-    x_mem[n % deg] = x_n;
+    x_mem[(n + mem_sz) % mem_sz] = x_n;
     double sum = 0;
-    for (int i = 0; i < deg; ++i) {
-        sum += b[i] * x_mem[(n - i + deg) % deg];
+    for (int i = 0; i <= M; ++i) {
+        sum += b[i] * x_mem[(n - i + mem_sz) % mem_sz];
     }
-    for (int i = 1; i < deg; ++i){
-        sum -= a[i] * y_mem[(n - i + deg) % deg];
+    for (int i = 1; i <= N; ++i){
+        sum -= a[i] * y_mem[(n - i + mem_sz) % mem_sz];
     }
-    y_mem[n % deg] = sum / a[0];
-    return y_mem[n % deg];
+    y_mem[n % mem_sz] = sum;
+    return y_mem[n % mem_sz];
 }
 
 dVector DiscreteTimeFilter::compute(const dVector & x_n) {
@@ -236,6 +246,26 @@ dVector DiscreteTimeFilter::compute(const dVector & x_n) {
 
 void DiscreteTimeFilter::set_state(const dVector & x_n) {
     // do nothing
+}
+
+DiscreteTimeFilter::DiscreteTimeFilter(dVector taps) {
+    // init parameters similar to a ccde
+    dVector a_in{1};
+
+    // initial coefficients
+    n = 0;
+    M = static_cast<int>(taps.size() - 1);
+    assert(M >= 0);  // taps with zerp size, invalid input
+    N = 0;
+    mem_sz = M + 1;
+    x_mem.resize(mem_sz);
+    y_mem.resize(mem_sz);
+    for (int i = 0; i < mem_sz; ++i) {
+        x_mem[i] = 0;
+        y_mem[i] = 0;
+    }
+    b = taps;
+    a = a_in;
 };
 
 

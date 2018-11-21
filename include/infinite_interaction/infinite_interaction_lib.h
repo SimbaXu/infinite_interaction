@@ -253,28 +253,45 @@ public:
 
 /*! Discrete-time SISO filter.
  *
- * The filter is constructed by two arrays: the numeration and the denominator.
- * In the following, x[n] is the input while y[n] is the output.
+ * Implementation of a basic Discrete-time SISO filter.  Let x[n] be
+ * the input and y[n] be the output, the filter has the following
+ * form numerically:
+ *
+ *     b0 x[n] + b1 x[n-1] + ... b_M x[n-M]  = a0 y[n] + a1 y[n-1] + ... + a_N y[n - N]
+ * 
+ * The z-transform of this filter has the standard form:
+ *
+ *     b0 + b1 z^-1 + ... + bM z^-M   Y
+ *     ---------------------------- = -
+ *     a0 + a1 z^-1 + ... + aN z^-N   X
+ *
+ * Note that a FIR filter is basically a ccde with zeroth order
+ * denominator. This class can also be used to initialized such
+ * configuration.
  */
 class DiscreteTimeFilter: public SignalBlock {
     /*! Order of the filter. Is basically the order of the denominator. */
-    int order;
-    /*! Current index. */
-    int n, mem_sz;
+    int N, M;
+    int n, mem_sz; /*! Current index. */
     /*! The last (order)-th input and output is stored. All are default to some initial condition. */
     dVector x_mem, y_mem;
     dVector b, a;
 public:
-    /*! Initialize the filter.
-        *
-        * \param b_in coefficients of the numerator
-        * \param a_in coefficients of the denominator
-        * \param y_initial_val initial condition of the output. initial condition of input is default to zero.
-        */
+    /*! Initialize a standard ccde.
+     *
+     * \param b_in coefficients of the numerator
+     * \param a_in coefficients of the denominator
+     * \param y_initial_val initial condition of the output. NOTE: initial condition 
+                            of input is default to zero.
+     */
     DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val=0);
+    /*! Initialize a FIR filter.
+     *
+     * \param taps Taps of the filter.
+     */
+    DiscreteTimeFilter(dVector taps);
     /*! Compute the output in the next time step.
      *
-     * ccde: a0 x[n] + a1 x[n-1] + ... a_o x[n-o]  = b0 y[n] + b1 y[n-1] + ... + b_o y[n - o]
      *
      * @param x_n
      * @return y_n
