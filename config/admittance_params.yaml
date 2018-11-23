@@ -1,5 +1,6 @@
 # This parameter selects the active controller
-active_controller: cartesian_3D_controller
+active_controller: cart3Dv2
+# cart3Dv2 
 
 # common parameters specific to the robot
 scene_path: robots/denso_ft_sensor_gripper.robot.xml
@@ -7,15 +8,59 @@ robot_name: denso_ft_sensor_gripper
 manip_frame: gripper
 ftsensor_frame: ft_sensor
 
+# controllers definitiosn
+cart3Dv2:
+  type: cartesian_3D_admittance_Qparam
+
+  # DESCRIPTION
+
+  # INTENDED BEHAVIOR: The robot responses to external forces by
+  # changing the position of its end-effector, keeping the
+  # orientationfixed. The initial position of the end-effector is set
+  # to be zero.
+
+  # IMPLEMENTATION NOTE: A decoupled control scheme, X-Y and-Z, is
+  # implemented. Individual controllers are implemented as delayed
+  # interconnections. See :class:`DelayFeedback` for more
+  # details. Remark that, the three controllers are combined to a
+  # single ControllerCollection using the class having the same name.
+
+  # Design scripts print controllers to yaml file with the below
+  # format. Note that the forward component filters, xff, yff, zff are
+  # FIR-based; and therefore, are initialized with taps. The backward
+  # component filters: xfb, yfb, zfb are ccde(s). All component filter
+  # have zero initial conditions.
+
+  # filter_path:
+  #   xff_taps:
+  #   xfb_b:
+  #   xfb_a:
+  #   yff_taps:
+  #   yfb_b:
+  #   yfb_a:
+  #   zff_taps:
+  #   zfb_b:
+  #   zfb_a:
+
+  # To run the experiment for this controller
+  # roscd infinite_interaction/config && rosparam load Nov21_Cart_synthesis_Qparam_synres.yaml
+
+  filter: /diagonal3D/filter_dev  # controller in development
+
+  gam: 1e-3
+  gam2: 1e-4
+
 cartesian_3D_controller:
   type: cartesian_3D_admittance
 
-  description: The robot responses to external forces by changing the
-               position of its end-effector while keeping the
-               orientation of the end-effector fixed. The reference
-               position of the end-effector is its initial
-               position. The reference wrench is the initial wrench
-               reading.
+  # DESCRIPTION: 
+
+  # INTENDED BEHAVIOR: See cartesian_3D_admittance_Qparam.
+
+  # IMPLEMENTATION NOTE: A MIMO (3 inputs, 3 outputs) controller is
+  # implemented with the FIR-Feedback-Series archiecture. This
+  # archiecture is taken directly from Wang's SLS paper. Read FIRsrfb
+  # docmentation for more details.
 
   filter: /fir_mimo/admittance3Dd  # decoupled classical admittance controller
   # filter: /fir_mimo/still

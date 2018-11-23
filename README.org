@@ -1,14 +1,20 @@
-Notes on running simulation:
-
+To run Gazebo simulation:
  - command line:
    #+BEGIN_SRC sh
      roslaunch infinite_interaction gazebo_interface.launch
    #+END_SRC
- - now both joint positions and force torque sensor reading should
-   be available!
- - remember to load parameters with
+ - now both joint positions and force torque sensor reading should be
+   available! You can check by listing the topics with
+
+      rostopic list
+
+   and check that the topics are shown.
+
+
+Notes on loading the system parameters:
+ - load parameters with:
    #+BEGIN_SRC sh
-     roscd infinite_interaction/config && rosparam load admittance_params.yaml && rosparam list
+     roscd infinite_interaction/config && rosparam load admittance_params.yaml
    #+END_SRC
 
 
@@ -26,5 +32,4 @@ Notes on running the actual system:
 
 
 Requirements:
-
 - Require Eigen 3.3. Best is to built Eigen from source (cmake, followed by make install)

@@ -58,16 +58,23 @@ void InfInteraction::JointTorqueFromWrenchProjector::set_state(const dVector &x_
 
 // ControllerCollection
 InfInteraction::ControllerCollection::ControllerCollection(std::vector<std::shared_ptr<SignalBlock> > controllers_):
-controllers(controllers_) {}
-
-dVector InfInteraction::ControllerCollection::compute(const dVector &y_n) {
-    dVector u_n(6);
-    for (unsigned int i = 0; i < 6; ++i) {
-        // run each filter over the given input individually
-        dVector y_ = controllers[i]->compute(dVector {y_n[i]});
-        u_n[i] = y_[0];
+controllers(controllers_) {
+    nb_controllers = static_cast<unsigned int>(controllers.size());
+    for(int i=0; i < nb_controllers; i++){
+        if (controllers[i]->get_input_size() != 1 or controllers[i]->get_output_size() != 1){
+            throw "Controller have more than 1 inputs or outputs";
+        };
     }
-    return u_n;
+}
+
+dVector InfInteraction::ControllerCollection::compute(const dVector &x_n) {
+    dVector y_n(nb_controllers), y_ ;
+    for (unsigned int i = 0; i < nb_controllers; ++i) {
+        // run each filter over the given input individually
+        y_ = controllers[i]->compute(dVector {x_n[i]});
+        y_n[i] = y_[0];
+    }
+    return y_n;
 }
 
 void InfInteraction::ControllerCollection::set_state(const dVector &x_n) {
@@ -221,3 +228,28 @@ void InfInteraction::CartPositionTracker::set_state(const dVector &jnt_pos_n) {
 }
 
 
+dVector InfInteraction::DelayFeedback::compute(const dVector &x_n) {
+    dVector alpha, beta(_input_size), y_n;
+    alpha = _fb_block->compute(y_last);
+    for(int i; i < _input_size; i++){
+        beta[i] = x_n[i] + _sign * alpha[i];
+    }
+    y_n = _fwd_block->compute(beta);
+    y_last = y_n;
+    return y_n;
+}
+
+InfInteraction::DelayFeedback::DelayFeedback(std::shared_ptr<SignalBlock> fwd_block,
+                                             std::shared_ptr<SignalBlock> fb_block, int sign): _sign(sign) {
+    _fwd_block = std::move(fwd_block);
+    _fb_block = std::move(fb_block);
+    y_last.resize(_fwd_block->get_output_size());
+    _input_size = _fwd_block->get_output_size();
+
+    std::fill(y_last.begin(), y_last.end(), 0);
+
+    // check consistent input/output dimensions
+    if(_fwd_block->get_output_size() != _fwd_block->get_input_size() or _fb_block->get_input_size() != _fb_block->get_output_size() or _fwd_block->get_output_size() != _fb_block->get_input_size()){
+        throw "Inconsistent input/output dimensions";
+    }
+}

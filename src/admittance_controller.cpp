@@ -143,7 +143,7 @@ int main(int argc, char **argv)
         }
         if (wrench_offset.size() != 6){
             ROS_ERROR_STREAM("Reference wrench_current from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
-            exit(0);
+	    ros::shutdown();
         }
         ft_handler.set_wrench_offset(wrench_offset);
 
@@ -219,6 +219,60 @@ int main(int argc, char **argv)
         node_handle.getParam(filter_path + "/L", L);
         node_handle.getParam(filter_path + "/MB2", MB2);
         controller_ptr = std::make_shared<FIRsrfb>(T, ny, nu, L, MB2);
+        // Inverse Kinematics: Converts Cartesian signals to joint coordinates
+        double gam, gam2;  // weights for regulation of dq, and of (q_current - q_init)
+        node_handle.param<double>("/" + controller_id + "/gam", gam, 0.01);
+        node_handle.param<double>("/" + controller_id + "/gam2", gam2, 0.001);
+        position_map_ptr = std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr, manip_name, jnt_pos_init, gam, gam2);
+    }
+     else if (controller_type == "cartesian_3D_admittance_Qparam"){
+        // get current wrench_current reading and set it as the offset
+        ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
+        dVector wrench_offset_;
+        ft_handler.get_latest_wrench(wrench_offset_);
+        ft_handler.set_wrench_offset(wrench_offset_);
+        // from external wrench_current to joint torque
+        robot_ptr->SetActiveDOFValues(jnt_pos_init); // set the robot's initial configuraiton before initializing force projection block
+        force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
+        // The initial pose is kept fixed.
+        std::string filter_path;
+        if (!node_handle.getParam("/" + controller_id + "/filter", filter_path)){
+            ROS_FATAL_STREAM("Unable to find a filter in controller: " << controller_id << ". Shutting down!");
+            ros::shutdown();
+        }
+        dVector fb_b, fb_a, ff_taps;
+        if (not node_handle.getParam(filter_path + "/xff_taps", ff_taps)){
+            ROS_ERROR_STREAM("Unable to find filter: " << filter_path << ". Shutting down");
+            ros::shutdown();
+        }
+        node_handle.getParam(filter_path + "/xff_taps", ff_taps);
+        node_handle.getParam(filter_path + "/xfb_b", fb_b);
+        node_handle.getParam(filter_path + "/xfb_a", fb_a);
+        auto xff = std::make_shared<DiscreteTimeFilter> (ff_taps);
+        auto xfb = std::make_shared<DiscreteTimeFilter> (fb_b, fb_a);
+        auto xfilter = std::make_shared<InfInteraction::DelayFeedback>(xff, xfb, -1);
+
+        node_handle.getParam(filter_path + "/yff_taps", ff_taps);
+        node_handle.getParam(filter_path + "/yfb_b", fb_b);
+        node_handle.getParam(filter_path + "/yfb_a", fb_a);
+        auto yff = std::make_shared<DiscreteTimeFilter> (ff_taps);
+        auto yfb = std::make_shared<DiscreteTimeFilter> (fb_b, fb_a);
+        auto yfilter = std::make_shared<InfInteraction::DelayFeedback>(yff, yfb, -1);
+
+        node_handle.getParam(filter_path + "/zff_taps", ff_taps);
+        node_handle.getParam(filter_path + "/zfb_b", fb_b);
+        node_handle.getParam(filter_path + "/zfb_a", fb_a);
+        auto zff = std::make_shared<DiscreteTimeFilter> (ff_taps);
+        auto zfb = std::make_shared<DiscreteTimeFilter> (fb_b, fb_a);
+        auto zfilter = std::make_shared<InfInteraction::DelayFeedback>(zff, zfb, -1);
+
+        std::vector<std::shared_ptr<SignalBlock > > ctrls;
+        ctrls.push_back(xfilter);
+        ctrls.push_back(yfilter);
+        ctrls.push_back(zfilter);
+
+        controller_ptr = std::make_shared<InfInteraction::ControllerCollection>(ctrls);
+
         // Inverse Kinematics: Converts Cartesian signals to joint coordinates
         double gam, gam2;  // weights for regulation of dq, and of (q_current - q_init)
         node_handle.param<double>("/" + controller_id + "/gam", gam, 0.01);

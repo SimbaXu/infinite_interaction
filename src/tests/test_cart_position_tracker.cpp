@@ -41,7 +41,7 @@ TEST(CartTracker, visual){
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr env_ptr = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-//    boost::thread thviewer(boost::bind(SetViewer,env_ptr, "qtosg"));  // create viewer
+    boost::thread thviewer(boost::bind(SetViewer,env_ptr, "qtosg"));  // create viewer
     env_ptr->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot_ptr;
     robot_ptr = env_ptr->GetRobot(robot_name);
@@ -51,7 +51,7 @@ TEST(CartTracker, visual){
     // Fed the same position 100 times
     std::vector<dVector > cart_poss; // desired cart positions
     double dx = -0.1, dy = 0.05, dz=-0.035;
-    for (int i=0; i < 20; ++i){
+    for (int i=0; i < 100; ++i){
         cart_poss.push_back(dVector {dx, dy, dz});
     }
 

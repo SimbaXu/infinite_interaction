@@ -96,11 +96,14 @@ def get_num_dens(Plist):
      [P21, P22, ...],
      [P21, P22, ...],
      ...]
+
+    The tfs are also summed to have consistent sampling time.
     """
     Nout = len(Plist)
     Nin = len(Plist[0])
     nums = []
     dens = []
+    dt = None
     for i in range(Nout):
         nums.append([])
         dens.append([])
@@ -108,6 +111,13 @@ def get_num_dens(Plist):
             if isinstance(Plist[i][j], co.xferfcn.TransferFunction):
                 nums[i].append(Plist[i][j].num[0][0])
                 dens[i].append(Plist[i][j].den[0][0])
+                if co.isdtime(Plist[i][j]):
+                    if dt is None:
+                        dt = Plist[i][j].dt
+                    elif dt != Plist[i][j].dt:
+                        raise(ValueError("Inconsistent sampling time"))
+                    else:  # okay
+                        pass
 
             # other than tf function, must be a float
             elif isinstance(Plist[i][j], float) or isinstance(Plist[i][j], int):
@@ -117,7 +127,7 @@ def get_num_dens(Plist):
                 raise(ValueError(
                     "Input: {:} not understood. Must be a transfer function or a numeric value."))
 
-    return nums, dens
+    return nums, dens, dt
 
 
 def tf_blocks(Plist):
@@ -125,8 +135,12 @@ def tf_blocks(Plist):
 
     See :func:`get_num_dens` for details.
     """
-    nums, dens = get_num_dens(Plist)
-    return co.tf(nums, dens)
+    nums, dens, dt = get_num_dens(Plist)
+
+    if dt is None:  # continuous time
+        return co.tf(nums, dens)
+    else:  # discrete time
+        return co.tf(nums, dens, dt)
 
 
 def lft(P, K, nu=-1, ny=-1):
@@ -395,3 +409,14 @@ class SLS:
         L = impulse_full[:, nx:nx + nu, nx:nx + ny]
 
         return R, N, M, L
+
+
+def get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1):
+    nw = Pz_design.inputs - nu
+    nz = Pz_design.outputs - ny
+    # block matrices
+    Pzw = Pz_design[:nz, :nw]
+    Pzu = Pz_design[:nz, nw:]
+    Pyw = Pz_design[nz:, :nw]
+    Pyu = Pz_design[nz:, nw:]
+    return Pzw, Pzu, Pyw, Pyu

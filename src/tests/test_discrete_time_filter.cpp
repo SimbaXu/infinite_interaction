@@ -6,7 +6,60 @@
 #include <infinite_interaction/infinite_interaction_lib.h>
 
 
+/*! Script to generate the desired result
+ *
+import control as co
+ff = co.tf([0, 1, 1, 0, 0, 0], [1, 0, 0, 0, 0, 0], 1)
+fb = co.tf([2, 0], [1, -1], 1) / co.tf([1, 0], [1], 1)  # div z
+cl = co.feedback(ff, fb, sign=-1)
+ 
+xin = [0, 1, 2, 1, 2, 3, 4, -2, -3]
+_, y, _ = co.forced_response(cl, range(len(xin)), xin)
+y.flatten()
+ */
+TEST(DelayFeedback, general_case){
+    dVector taps{0, 1, 1, 0, 0, 0};
+    std::shared_ptr<SignalBlock> ff_ptr = std::make_shared<DiscreteTimeFilter>(taps);
 
+    dVector num {2}, den{1, -1};
+    std::shared_ptr<SignalBlock> fb_ptr = std::make_shared<DiscreteTimeFilter>(num, den);
+    InfInteraction::DelayFeedback fb(ff_ptr, fb_ptr, -1);
+    dVector xin{0, 1, 2, 1, 2, 3, 4, -2, -3};
+    dVector y_correct { 0.,   0.,   1.,   3.,   1.,  -7., -13.,   1.,  36.};
+
+    for (int i=0; i < xin.size(); i++){
+        dVector y = fb.compute(dVector {xin[i]});
+        EXPECT_EQ(y_correct[i], y[0])<< "Fail at i=" << i;
+    }
+}
+
+
+/*! Script to generate the desired result
+ *
+import control as co
+ff = co.tf([0, 1, 2, -1, 0, 0], [1, 0, 0, 0, 0, 0], 1)
+fb = co.tf([0], [1, -0.5], 1) / co.tf([1, 0], [1])  # div z
+cl = co.feedback(ff, fb, sign=-1)
+
+xin = [0, 1, 2, 1, 2, 3, 4, -2, -3]
+_, y, _ = co.forced_response(cl, range(len(xin)), xin)
+print(y)
+ */
+TEST(DelayFeedback, zero_feedback){
+    dVector taps{0, 1, 2, -1, 0, 0};
+    std::shared_ptr<SignalBlock> ff_ptr = std::make_shared<DiscreteTimeFilter>(taps);
+
+    dVector num {0}, den{1, -0.5};
+    std::shared_ptr<SignalBlock> fb_ptr = std::make_shared<DiscreteTimeFilter>(num, den);
+    InfInteraction::DelayFeedback fb(ff_ptr, fb_ptr, -1);
+    dVector xin{0, 1, 2, 1, 2, 3, 4, -2, -3};
+    dVector y_correct {0., 0., 1., 4., 4., 2., 6., 8., 3.};
+
+    for (int i=0; i < xin.size(); i++){
+        dVector y = fb.compute(dVector {xin[i]});
+        EXPECT_EQ(y_correct[i], y[0])<< "Fail at i=" << i;
+    }
+}
 
 TEST(DiscreteTimeFilter_fir_scalar, case1){
     dVector taps{0, 1, 2, -1, 0, 0};
@@ -58,7 +111,6 @@ TEST(DiscreteTimeFilter_ccde_scalar, num_longer){
         EXPECT_EQ(y_correct[i], y) << "Failed at i = " << i;
     }
 }
-
 
 TEST(DiscreteTimeFilter_ccde_scalar, order_zero){
     // implement the filter y[n] = -x[n]

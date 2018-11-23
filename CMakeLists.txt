@@ -64,7 +64,10 @@ target_link_libraries(sinuisoidal_motion_generator
 set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp src/libinfinite_interaction/infinite_interaction.cpp)
+add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp
+		src/libinfinite_interaction/infinite_interaction.cpp
+		src/libinfinite_interaction/filters.cpp
+		)
 target_link_libraries(test_discrete_time_filter gtest_main
         ${catkin_LIBRARIES}
 		qpOASES Eigen3::Eigen

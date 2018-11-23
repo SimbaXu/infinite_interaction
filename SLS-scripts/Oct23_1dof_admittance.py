@@ -81,12 +81,22 @@ def analysis(plant, controller, Mp=1.05, Tr=0.9, controller_name='noname',
              internal_data=None, m=0.5, b=10, k=80,
              freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
              freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
-    """Analysis of closed-loop response.
+    """A basic analysis of a plant/controller pair.
 
     Simulate the system and draw several plots.
 
+      1 |  3
+    ----|----
+      2 |  4
+
+    1): input output 1
+    2): input output 2
+    3): frequency responses
+    4): nyquist
+
     Args:
-        plant: A discrete-time LTI system.
+        plant: A (3 outputs, 2 inputs) discrete-time LTI system.
+        controller: A (1 output, 1 input) discrete-time LTI system.
         internal_data: The internal responses {R, M, N, L, H} in that
                        order. Or can be None.
     """

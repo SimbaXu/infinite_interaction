@@ -29,9 +29,13 @@ inline double MAX(double x, double y)
     return x > y ? x : y;
 }
 
+// A common terminology:
+// x: input signal
+// y: output signal
 
 
-// TODO: Rename this class to something more appropriate
+
+
 // A generic Base class for a discrete-time processing "block" that receives at each time
 // step a vector input and produces a vector output. In general, most controllers, kinematic
 // maps, force maps implemented in this package are child classes of this class.
@@ -47,9 +51,11 @@ public:
     // virtual destructor allows Derived Classes to destroy its internal
     // states. This is always recommend when polymorphism is needed.
     // https://stackoverflow.com/questions/461203/when-to-use-virtual-destructors
+    virtual int get_input_size() {return 1;};
+    virtual int get_output_size() {return 1;};
+    virtual int get_state_size() {return 1;};
     virtual ~SignalBlock() {};
 };
-
 
 namespace InfInteraction{
 
@@ -67,6 +73,9 @@ public:
     JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
     dVector compute(const dVector & u_n);
     void set_state(const dVector & x_n);
+    virtual int get_input_size() {return 6;};
+    virtual int get_output_size() {return 6;};
+    virtual int get_state_size() {return 6;};
 };
 
 
@@ -88,15 +97,38 @@ public:
 };
 
 
-/*A collection of controller. Used to implement Joint Admittance controller, where each
- * joint is controlled individually.
+/*! Form diagonal matrix of given controllers.
+ *
+ * Suppose (c1, c2, .., cN) is given as input. This controller expect an input with length N
+ * and produces an output with length N at each call to compute. One has respectively:
+ *
+ *   y[i] = ci.compute{x[i]}
  */
 class ControllerCollection: public SignalBlock {
     std::vector<std::shared_ptr<SignalBlock > > controllers;
+    unsigned int nb_controllers;
 public:
     ControllerCollection(std::vector<std::shared_ptr<SignalBlock > > controllers_);
-    dVector compute(const dVector & y_n);
+    dVector compute(const dVector & x_n);
     void set_state(const dVector & x_n);
+};
+
+/*! A feedback interconnection with delayed feedback route.
+ *
+ * --- o -- forward block -------->
+ *     ^                     | z^-1
+ *     \--- feedback block --/
+ *
+ */
+class DelayFeedback: public SignalBlock {
+    std::shared_ptr<SignalBlock> _fwd_block, _fb_block;
+    dVector y_last;
+    unsigned int _input_size;
+    int _sign;
+public:
+    DelayFeedback(std::shared_ptr<SignalBlock> fwd_block, std::shared_ptr<SignalBlock> fb_block, int sign=-1);
+    dVector compute(const dVector & x_n);
+    void set_state(const dVector & x_n) {};
 };
 
 // A Block that simply offset the input by an initially given vector.
@@ -127,9 +159,10 @@ public:
              _pos_init /*Initial position*/ ;
      OpenRAVE::RobotBasePtr robot_ptr;
      OpenRAVE::RobotBase::ManipulatorPtr manip_ptr;
-     double _gam2, _gam;
+     double _gam2,  /*Weight to limit (q_cur + dq - q_init)*/
+             _gam;  /*Weight to limit dq*/
  public:
-     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init, double gam=0.01, double gam2=0.01);
+     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init, double gam=0.0, double gam2=0.0);
 
      /*! \brief Compute joint values that track the given the Cartesian position pos_n.
       *
@@ -250,14 +283,13 @@ public:
 };
 
 
-
 /*! Discrete-time SISO filter.
  *
- * Implementation of a basic Discrete-time SISO filter.  Let x[n] be
- * the input and y[n] be the output, the filter has the following
- * form numerically:
+ * An implementation of a basic Discrete-time SISO filter.  Let x[n]
+ * be the input and y[n] be the output, this filter implements the
+ * following CCDE numerically:
  *
- *     b0 x[n] + b1 x[n-1] + ... b_M x[n-M]  = a0 y[n] + a1 y[n-1] + ... + a_N y[n - N]
+ *     b0 x[n] + b1 x[n-1] + ... b_M x[n-M] = a0 y[n] + a1 y[n-1] + ... + a_N y[n - N]
  * 
  * The z-transform of this filter has the standard form:
  *
@@ -265,7 +297,18 @@ public:
  *     ---------------------------- = -
  *     a0 + a1 z^-1 + ... + aN z^-N   X
  *
- * Note that a FIR filter is basically a ccde with zeroth order
+ * NOTE: This filter is initialized in a signal-processing oriented
+ * way. For instance, suppose ([1], [2, 3]) are given, the following
+ * ccde is realized:
+ * 
+ *          1 * x[n] = 2 * y[n] + 3 * y[n-1]
+ *  
+ * On another hand, in a control-theory oriented way, such as
+ * python-control, the following ccde is realized:
+ * 
+ *          1 * x[n-1] = 2 * y[n] + 3 * y[n-1]
+ * 
+ * NOTE: a FIR filter is basically a ccde with zeroth order
  * denominator. This class can also be used to initialized such
  * configuration.
  */
