@@ -36,6 +36,10 @@ Notes on running the actual system:
 
 
 # Requirements:
+
+## resource at crigroup
+  - robotic_description
+
 ## Eigen 3.3
 
 Best is to built Eigen from source
