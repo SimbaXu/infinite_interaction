@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+  <remap from="netft_data" to="netft/raw"/>
+  <node name="netft_node" pkg="netft_control" type="netft_node"
+  output="screen" args="--address 192.168.0.22 --rate 250"/>
+</launch>
