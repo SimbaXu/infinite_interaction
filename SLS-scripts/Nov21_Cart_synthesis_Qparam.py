@@ -13,8 +13,7 @@ dt = 0.008
 
 
 def plant(gain_E=20, m_int=0.1):
-    """
-
+    """ An old plant model. Not in use currently.
     """
     z = co.tf([1, 0], [1], dt)
     s = co.tf([1, 0], [1])
@@ -32,7 +31,9 @@ def plant(gain_E=20, m_int=0.1):
 
 
 def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True):
-    """
+    """ Plant Model with multiplicative uncertainty.
+
+    Diagram is drawn in page 3, notebook.
 
     Args
         wI (float): Can be a complex function.  Uncertainty in the
@@ -163,7 +164,7 @@ def analysis(plant, controller, controller_name='noname',
     plt.show()
 
 
-def Q_synthesis(Pz_design, Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
+def Q_synthesis(Pz_design, imp_weight_vec=np.ones(500), Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
     """
     """
     # setup
@@ -265,25 +266,20 @@ def Q_synthesis(Pz_design, Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
         cvx.abs(H11_freqrp) <= 1
     )
 
-    # distance moved should never be negative (not effective)
-    dist_mat = np.zeros((Nstep, Nstep))
-    for i in range(Nstep):
-        dist_mat[i, :i] = 1.0
+    # distance moved should never be negative (not effective, hence, not in use)
+    # dist_mat = np.zeros((Nstep, Nstep))
+    # for i in range(Nstep):
+        # dist_mat[i, :i] = 1.0
     # constraints.append(dist_mat * imp_var >= 0)
-    
+
     # zero distance travelled  (not effective)
     # constraints.append(cvx.sum(imp_var) == 0)
 
-    # penalize change in impulse response
+    # penalize rapid changes in impulse response
     imp_diff_mat = np.zeros((Nstep - 1, Nstep))
     for i in range(Nstep - 1):
         imp_diff_mat[i, i: i + 2] = [1.0, -1.0]
 
-    imp_weight_vec = np.zeros(Nstep)
-    weighted_steps = 50
-    imp_weight_vec[:weighted_steps] = (1 - np.arange(weighted_steps) / weighted_steps) ** 2
-    # imp_weight = np.diag(1 + np.sqrt(np.arange(Nstep) / Nstep))
-    # imp_weight = np.eye(Nstep)
     imp_weight = np.diag(imp_weight_vec)
     cost1 = cvx.norm(imp_weight * (imp_var - imp_desired))
     cost2 = reg * cvx.norm1(weight)
