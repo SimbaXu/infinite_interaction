@@ -30,20 +30,20 @@ def plant(gain_E=20, m_int=0.1):
     return P
 
 
-def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True,
-                input_delay=1, output_delay=1):
+def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
+                N_in=1, N_out=1):
     """ Plant Model with multiplicative uncertainty.
 
     Diagram is drawn in page 4, notebook.
 
-    Args
-        wI (float): Can be a complex function.  Uncertainty in the
-            exogeneous agent.
-        inverse_uncertainty (bool, optional): If True, return a plant with Inverse
-            Multiplicative Uncertainty in the exogeneous agent. Otherwise return a plant
-            with (non-Inverse) Multiplicative Uncertainty.
-        input_delay (int, optional): Nb. of delay steps in the input path.
-        output_delay (int, optional): Nb. of delay steps in the output path.
+    Args:
+        wI (float): Can be a complex function.  Uncertainty in the exogeneous agent.
+        sys_type (str, optional): Type of plant.
+            - 22_mult_unt: (2, 2) system with multiplicative uncertainty;
+            - 22_inv_mult_unt: (2, 2) system with inverse multiplicative uncertainty;
+            - 33_mult_unt: (3, 3) system with multiplicative uncertainty.
+        N_in (int, optional): Nb. of delay steps in the input path.
+        N_out (int, optional): Nb. of delay steps in the output path.
     """
     # constant transfer function
     z = co.tf([1, 0], [1], dt)
@@ -51,19 +51,34 @@ def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True,
     zero = co.tf([0], [1], dt)
     one = co.tf([1], [1], dt)
 
+    E_gain = - abs(E_gain)
+
     # basic blocks
     R1 = co.c2d(s / (1 + 0.0437 * s), dt)
-    E = - co.c2d(gain_E / s, dt)  # exo agent
+    sumz = co.c2d(1 / s, dt)  # discrete-time integrator
+    E = E_gain * sumz  # exo agent
     R2 = - m_int / dt ** 2 * (1 - z ** (-1)) ** 2  # internally induced
 
-    if inverse_uncertainty:
-        P = Ss.tf_blocks([[0, 0, R1 * z**(-1)],
-                          [0, - wI, R1 * E * z**(-1)],
-                          [z**(-1), - wI * z**(-1), (R1 * E + R2) * z**(-2)]])
-    else:
-        P = Ss.tf_blocks([[0, 0, R1 * z**(-input_delay)],
-                          [0, 0, R1 * E * wI * z**(-input_delay)],
-                          [z**(-output_delay), z**(-output_delay), (R1 * E + R2) * z**(-input_delay - output_delay)]])
+    if sys_type == "22_inv_mult_unt":
+        P = Ss.tf_blocks([
+            [0, 0, R1 * z**(-1)],
+            [0, - wI, R1 * E * z**(-1)],
+            [z**(-1), - wI * z**(-1), (R1 * E + R2) * z**(-2)]
+        ])
+    elif sys_type == "22_mult_unt":
+        P = Ss.tf_blocks([
+            [0, 0, R1 * z**(-N_in)],
+            [0, 0, R1 * E * wI * z**(-N_in)],
+            [z**(-N_out), z**(-N_out), (R1 * E + R2) * z**(-N_in - N_out)]
+        ])
+    elif sys_type == "33_mult_unt":
+        P = Ss.tf_blocks([
+            [0, 0, 0, R1 * z**(- N_in)],
+            [0, 0, E_gain * wI, R1 * sumz * E_gain * wI * z**(-N_in)],
+            [0, 1, E_gain, R1 * sumz * E_gain * z**(-N_in)],
+            [z**(-N_in), z**(-N_in), E_gain * z**(-N_in), (R1 * sumz * E_gain + R2) * z **(-N_in - N_out)]
+        ])
+        pass
     return P
 
 
@@ -137,6 +152,11 @@ def analysis(plant, controller, controller_name='noname',
     # frequency responses
     mag_yn = 20 * np.log10(mag[0, 0])
     mag_M = 20 * np.log10(mag[1, 1])
+    try:
+        mag_33 = 20 * np.log10(mag[2, 2])  # mapping from intention displacement to force feedback
+        axs[0, 1].plot(freqs, mag_33, label='H33(e^jw)', c='C2')
+    except:
+        pass
     # bounds on H_yn and H_T
     axs[0, 1].plot(freqs, mag_yn, label='H11(e^jw)', c='C0')
     axs[0, 1].plot(freqs, mag_M, label='H22(e^jw)', c='C1')
@@ -231,6 +251,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     omegas = np.concatenate((np.linspace(1e-2, 19.9, 100), omegas))
     basis_H00_freqrp = []
     basis_H11_freqrp = []
+    basis_H22_freqrp = []
     for H in basis_Hs:
         # H00
         mag, phase, _ = H[0, 0].freqresp(omegas)
@@ -240,6 +261,10 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
         mag, phase, _ = H[1, 1].freqresp(omegas)
         freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
         basis_H11_freqrp.append(freqresp)
+        # H22
+        mag, phase, _ = H[2, 2].freqresp(omegas)
+        freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
+        basis_H22_freqrp.append(freqresp)
 
     # ## debug impulse respnse
     # for i in range(5):
@@ -253,7 +278,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     Nvar = len(basis_Qs)
     weight = cvx.Variable(Nvar)
     constraints = [
-        # cvx.sum(weight) == 1
+        cvx.sum(weight) == 1
     ]
 
     imp_var = 0
@@ -264,10 +289,25 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
         H00_freqrp += weight[i] * basis_H00_freqrp[i]
         H11_freqrp += weight[i] * basis_H11_freqrp[i]
 
+    try:
+        H22_freqrp = 0
+        for i in range(Nvar):
+            H22_freqrp += weight[i] * basis_H22_freqrp[i]
+        constraints.append(cvx.abs(H22_freqrp) <= 55)
+    except Exception as e:
+        print("Unable to constraint H22, error: {:}".format(e))
+
     # robust stability
     constraints.append(
         cvx.abs(H11_freqrp) <= 1
     )
+
+    # # noise attenuation:
+    # constraints.append(
+    #     cvx.abs(H00_freqrp) <= 2e-2
+    # )
+
+    # constraint disp -> force
 
     # distance moved should never be negative (not effective, hence, not in use)
     # dist_mat = np.zeros((Nstep, Nstep))
@@ -302,6 +342,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     axs[0, 1].plot(weight.value, label="weight")
     axs[1, 0].plot(omegas, np.abs(H00_freqrp.value), label="H00")
     axs[1, 1].plot(omegas, np.abs(H11_freqrp.value), label="H11")
+    axs[1, 1].plot(omegas, np.abs(H22_freqrp.value), label="H22")
     for i, j in [(1, 0), (1, 1)]:
         axs[i, j].grid()
         axs[i, j].legend()
@@ -368,12 +409,13 @@ def main():
     }
 
     # impulse response and weight
-    imp_desired = desired_impulse(m=2, b=20, k=5, Nstep=1000)
+    imp_desired = desired_impulse(m=2, b=10, k=5, Nstep=1000)
     imp_weight = np.zeros(1000)
-    imp_weight[:1000] = 1
+    imp_weight[:] = 1
     plt.plot(imp_desired); plt.show()
 
-    Pz_design = plantMdelta(gain_E=70, wI=1.0, inverse_uncertainty=False)
+    Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.15, N_in=2, N_out=1)
+    # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
     K_Qparam, data = Q_synthesis(
         Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
@@ -383,11 +425,13 @@ def main():
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='design plant')
 
-        Pz_contract = plantMdelta(gain_E=100, input_delay=2, output_delay=2)
+        Pz_contract = plantMdelta(E_gain=50, N_in=2, N_out=2, sys_type='33_mult_unt')
         analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
 
-        Pz_open = plantMdelta(gain_E=60)
+        Pz_open = plantMdelta(E_gain=60)
         analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
+
+
         analysis(Pz_design, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
 
     if input("Write controller? y/[n]") == 'y':
