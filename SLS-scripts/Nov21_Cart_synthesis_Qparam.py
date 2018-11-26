@@ -158,8 +158,8 @@ def analysis(plant, controller, controller_name='noname',
     except:
         pass
     # bounds on H_yn and H_T
-    axs[0, 1].plot(freqs, mag_yn, label='H11(e^jw)', c='C0')
-    axs[0, 1].plot(freqs, mag_M, label='H22(e^jw)', c='C1')
+    axs[0, 1].plot(freqs, mag_yn, label='|H11(e^jw)|', c='C0')
+    axs[0, 1].plot(freqs, mag_M, label='|H22(e^jw)|', c='C1')
     axs[0, 1].plot([w_nyquist, w_nyquist], [
                    np.min(mag_yn), np.max(mag_yn)], '--', c='red')
     axs[0, 1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='wN(w)^-1')
@@ -171,16 +171,23 @@ def analysis(plant, controller, controller_name='noname',
     axs[0, 1].legend()
     axs[0, 1].grid()
 
-    # nyquist plot of H_yn (noise to output)
-    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
-    axs[1, 1].plot(H_yn.real, H_yn.imag, '-')
-    axs[1, 1].set_title("Nyquist plot of H_yn(s)")
-    axs[1, 1].grid()
+    # # nyquist plot of H_yn (noise to output)
+    # H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
+    # axs[1, 1].plot(H_yn.real, H_yn.imag, '-')
+    # axs[1, 1].set_title("Nyquist plot of H_yn(s)")
+    # axs[1, 1].grid()
 
-    int_omegas = [6, 10, 50, 80]  # interested angular velocity
-    for int_omega_ in int_omegas:
-        idx = np.argmin(np.abs(freqs - int_omega_))
-        axs[1, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+    # int_omegas = [6, 10, 50, 80]  # interested angular velocity
+    # for int_omega_ in int_omegas:
+    #     idx = np.argmin(np.abs(freqs - int_omega_))
+    #     axs[1, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+
+    # Axs[1,1]: phase lag plot
+    axs[1, 1].set_title("phase lag")
+    axs[1, 1].plot(freqs, phase[2, 2], label='angle{H22}')
+    axs[1, 1].set_xscale('log')
+    axs[1, 1].grid()
+    axs[1, 1].legend()
 
     fig.suptitle('Analysis plots: {:}'.format(controller_name))
     plt.tight_layout()
@@ -293,7 +300,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
         H22_freqrp = 0
         for i in range(Nvar):
             H22_freqrp += weight[i] * basis_H22_freqrp[i]
-        constraints.append(cvx.abs(H22_freqrp) <= 55)
+        # constraints.append(cvx.abs(H22_freqrp) <= 55)
     except Exception as e:
         print("Unable to constraint H22, error: {:}".format(e))
 
@@ -409,12 +416,13 @@ def main():
     }
 
     # impulse response and weight
-    imp_desired = desired_impulse(m=2, b=10, k=5, Nstep=1000)
+    imp_desired = desired_impulse(m=2, b=20, k=5, Nstep=1000)
     imp_weight = np.zeros(1000)
     imp_weight[:] = 1
     plt.plot(imp_desired); plt.show()
 
-    Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.15, N_in=2, N_out=1)
+    Pz_design = plantMdelta(
+        E_gain=70, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
     # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
     K_Qparam, data = Q_synthesis(
