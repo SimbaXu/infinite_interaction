@@ -11,7 +11,7 @@
   <rosparam>
     admittance_controller:
         debug: true
-        viewer: true
+        viewer: false
     <!-- if true, turn on debug mode; additional data will be published to debug topics-->
   </rosparam>
   <!-- logging configuration -->
