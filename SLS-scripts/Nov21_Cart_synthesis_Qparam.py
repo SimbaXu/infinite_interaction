@@ -416,13 +416,13 @@ def main():
     }
 
     # impulse response and weight
-    imp_desired = desired_impulse(m=2, b=20, k=5, Nstep=1000)
+    imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
     imp_weight = np.zeros(1000)
     imp_weight[:] = 1
     plt.plot(imp_desired); plt.show()
 
     Pz_design = plantMdelta(
-        E_gain=70, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=80, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
     # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
     K_Qparam, data = Q_synthesis(
