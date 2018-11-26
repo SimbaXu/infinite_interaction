@@ -30,10 +30,11 @@ def plant(gain_E=20, m_int=0.1):
     return P
 
 
-def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True):
+def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True,
+                input_delay=1, output_delay=1):
     """ Plant Model with multiplicative uncertainty.
 
-    Diagram is drawn in page 3, notebook.
+    Diagram is drawn in page 4, notebook.
 
     Args
         wI (float): Can be a complex function.  Uncertainty in the
@@ -41,6 +42,8 @@ def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True):
         inverse_uncertainty (bool, optional): If True, return a plant with Inverse
             Multiplicative Uncertainty in the exogeneous agent. Otherwise return a plant
             with (non-Inverse) Multiplicative Uncertainty.
+        input_delay (int, optional): Nb. of delay steps in the input path.
+        output_delay (int, optional): Nb. of delay steps in the output path.
     """
     # constant transfer function
     z = co.tf([1, 0], [1], dt)
@@ -58,9 +61,9 @@ def plantMdelta(gain_E=20, m_int=0.1, wI=0.9995, inverse_uncertainty=True):
                           [0, - wI, R1 * E * z**(-1)],
                           [z**(-1), - wI * z**(-1), (R1 * E + R2) * z**(-2)]])
     else:
-        P = Ss.tf_blocks([[0, 0, R1 * z**(-1)],
-                          [0, 0, R1 * E * wI * z**(-1)],
-                          [z**(-1), z**(-1), (R1 * E + R2) * z**(-2)]])
+        P = Ss.tf_blocks([[0, 0, R1 * z**(-input_delay)],
+                          [0, 0, R1 * E * wI * z**(-input_delay)],
+                          [z**(-output_delay), z**(-output_delay), (R1 * E + R2) * z**(-input_delay - output_delay)]])
     return P
 
 
@@ -164,7 +167,7 @@ def analysis(plant, controller, controller_name='noname',
     plt.show()
 
 
-def Q_synthesis(Pz_design, imp_weight_vec=np.ones(500), Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
+def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
     """
     """
     # setup
@@ -280,8 +283,8 @@ def Q_synthesis(Pz_design, imp_weight_vec=np.ones(500), Ntaps=300, Nstep=500, im
     for i in range(Nstep - 1):
         imp_diff_mat[i, i: i + 2] = [1.0, -1.0]
 
-    imp_weight = np.diag(imp_weight_vec)
-    cost1 = cvx.norm(imp_weight * (imp_var - imp_desired))
+    imp_weight_mat = np.diag(imp_weight)
+    cost1 = cvx.norm(imp_weight_mat * (imp_var - imp_desired))
     cost2 = reg * cvx.norm1(weight)
     cost3 = cvx.norm(imp_diff_mat * imp_var)
     cost = cost1 + cost2 + cost3
@@ -294,7 +297,7 @@ def Q_synthesis(Pz_design, imp_weight_vec=np.ones(500), Ntaps=300, Nstep=500, im
     fig, axs = plt.subplots(2, 2)
     axs[0, 0].plot(imp_var.value, label="imp_var")
     axs[0, 0].plot(imp_desired, label="imp_desired")
-    axs[0, 0].plot(imp_weight_vec * 0.004, label="scaled weight")
+    axs[0, 0].plot(imp_weight * 0.004, label="scaled weight")
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
     axs[1, 0].plot(omegas, np.abs(H00_freqrp.value), label="H00")
@@ -359,25 +362,31 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 
 
 def main():
-    Pz_contract = plantMdelta(gain_E=100)
-    Pz_open = plantMdelta(gain_E=60)
 
     K_ = {
         'admittance': co.c2d(co.tf([1], [6, 18, 15]), dt)
     }
 
-    # design
-    imp_desired = desired_impulse(m=2, b=20, k=0, Nstep=1000)
+    # impulse response and weight
+    imp_desired = desired_impulse(m=2, b=20, k=5, Nstep=1000)
+    imp_weight = np.zeros(1000)
+    imp_weight[:1000] = 1
     plt.plot(imp_desired); plt.show()
 
-    Pz_design = plantMdelta(gain_E=40, wI=1, inverse_uncertainty=False)
+    Pz_design = plantMdelta(gain_E=70, wI=1.0, inverse_uncertainty=False)
+
     K_Qparam, data = Q_synthesis(
-        Pz_design, imp_desired=imp_desired, Ntaps=800, Nstep=1000)
+        Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
+        Ntaps=800, Nstep=1000)
 
     # analysis Qparam
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='design plant')
+
+        Pz_contract = plantMdelta(gain_E=100, input_delay=2, output_delay=2)
         analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
+
+        Pz_open = plantMdelta(gain_E=60)
         analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
         analysis(Pz_design, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
 
