@@ -30,7 +30,7 @@ Notes on running the actual system:
     roslaunch netft_control ros_controllers.launch
 
      # launch netft via a node
-	 rosrun netft_control netft_node --address 192.168.0.22
+	 roslaunch infinite_interaction load_netft.launch
 
   #+END_SRC
 
