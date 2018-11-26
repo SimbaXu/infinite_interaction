@@ -1,5 +1,10 @@
 import numpy as np
-import matlab.engine
+try:
+    import matlab.engine
+    FOUND_MATLAB = True
+except ImportError:
+    # unable to find matlab-engine
+    FOUND_MATLAB = False
 import control as co
 import yaml
 import os

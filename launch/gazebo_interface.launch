@@ -19,8 +19,6 @@
   <arg if="$(arg debug)"      name="OUTPUT" value="screen"/>
   <arg unless="$(arg debug)"  name="OUTPUT" value="log"/>
 
-  <!-- Export env variable so that gazebo finds our models -->
-  <env name="GAZEBO_MODEL_PATH" value="$(find osr_gazebo)/models:$(optenv GAZEBO_MODEL_PATH)" />
   <!-- startup simulated world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="paused"      value="$(arg paused)"/>
