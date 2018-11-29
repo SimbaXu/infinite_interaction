@@ -7,6 +7,7 @@
   
   <!-- controller designs -->
   <rosparam command="load" file="$(find infinite_interaction)/config/Nov21_Cart_synthesis_Qparam_synres.yaml"/>
+  <rosparam command="load" file="$(find infinite_interaction)/config/fir_mimo_controllers.yaml"/>
   
   <rosparam>
     admittance_controller:

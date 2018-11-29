@@ -1,5 +1,7 @@
 # This parameter selects the active controller
 active_controller: cart3Dv2
+# active_controller: cartesian_3D_controller
+# cartesian_3D_controller
 # cart3Dv2 
 
 # common parameters specific to the robot
@@ -48,7 +50,7 @@ cart3Dv2:
   filter: /diagonal3D/filter_dev  # controller in development
 
   gam: 1e-3
-  gam2: 1e-4
+  gam2: 1e-5
 
 cartesian_3D_controller:
   type: cartesian_3D_admittance
