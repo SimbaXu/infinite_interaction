@@ -93,11 +93,14 @@ def analysis(plant, controller, controller_name='noname',
       1 |  3
     ----|----
       2 |  4
+    ---------
+      5 |  6
 
     1): input output 1
     2): input output 2
-    3): frequency responses
-    4): nyquist
+    3): frequency responses: magnitude
+    4): frequency responses: phases
+    5): nyquist
 
     Args:
         plant: A (3 outputs, 2 inputs) discrete-time LTI system.
@@ -124,7 +127,7 @@ def analysis(plant, controller, controller_name='noname',
     mag, phase, omega = H.freqresp(freqs)
 
     # step and impulse response
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+    fig, axs = plt.subplots(3, 2, figsize=(10, 10))
 
     # Q-params
     Q = co.feedback(controller, Pyu, sign=1)
@@ -171,20 +174,24 @@ def analysis(plant, controller, controller_name='noname',
     axs[0, 1].legend()
     axs[0, 1].grid()
 
-    # # nyquist plot of H_yn (noise to output)
-    # H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
-    # axs[1, 1].plot(H_yn.real, H_yn.imag, '-')
-    # axs[1, 1].set_title("Nyquist plot of H_yn(s)")
-    # axs[1, 1].grid()
+    # nyquist plot of H_yn (noise to output):
 
-    # int_omegas = [6, 10, 50, 80]  # interested angular velocity
-    # for int_omega_ in int_omegas:
-    #     idx = np.argmin(np.abs(freqs - int_omega_))
-    #     axs[1, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+    # This plot is important and should be kept because it shows the
+    # "level of passivity" of the closed-loop system.
+    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
+    axs[2, 1].plot(H_yn.real, H_yn.imag, '-')
+    axs[2, 1].set_title("Nyquist plot of H_yn(s)")
+    axs[2, 1].grid()
+
+    int_omegas = [6, 10, 50, 80]  # interested angular velocity
+    for int_omega_ in int_omegas:
+        idx = np.argmin(np.abs(freqs - int_omega_))
+        axs[2, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
 
     # Axs[1,1]: phase lag plot
     axs[1, 1].set_title("phase lag")
-    axs[1, 1].plot(freqs, phase[2, 2], label='angle{H22}')
+    axs[1, 1].plot(freqs, phase[0, 0], label='phase{H00}')
+    axs[1, 1].plot(freqs, phase[2, 2], label='phase{H22}')
     axs[1, 1].set_xscale('log')
     axs[1, 1].grid()
     axs[1, 1].legend()
@@ -300,6 +307,8 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
         H22_freqrp = 0
         for i in range(Nvar):
             H22_freqrp += weight[i] * basis_H22_freqrp[i]
+        # constraint magnitude of the mapping from displacement to
+        # force, did not work very well.
         # constraints.append(cvx.abs(H22_freqrp) <= 55)
     except Exception as e:
         print("Unable to constraint H22, error: {:}".format(e))
@@ -314,16 +323,20 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     #     cvx.abs(H00_freqrp) <= 2e-2
     # )
 
-    # constraint disp -> force
-
     # distance moved should never be negative (not effective, hence, not in use)
     # dist_mat = np.zeros((Nstep, Nstep))
     # for i in range(Nstep):
         # dist_mat[i, :i] = 1.0
     # constraints.append(dist_mat * imp_var >= 0)
 
-    # zero distance travelled  (not effective)
+    # zero distance travelled  (not effective) (this constraint is satisfied by definition)
     # constraints.append(cvx.sum(imp_var) == 0)
+
+    # # good (positive phase lag) passive until w = 4 (not effective)
+    # omega_ths_idx = np.argmin(np.abs(omegas - 8.0))
+    # constraints.append(
+    #     cvx.imag(H00_freqrp[:omega_ths_idx]) >= 0
+    # )
 
     # penalize rapid changes in impulse response
     imp_diff_mat = np.zeros((Nstep - 1, Nstep))
@@ -416,19 +429,19 @@ def main():
     }
 
     # impulse response and weight
-    imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
+    imp_desired = desired_impulse(m=6, b=18, k=5, Nstep=1000)
     imp_weight = np.zeros(1000)
     imp_weight[:] = 1
     plt.plot(imp_desired); plt.show()
 
     Pz_design = plantMdelta(
-        E_gain=80, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
     # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
-    K_Qparam, data = Q_synthesis(
-        Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
-        Ntaps=800, Nstep=1000)
-
+    if input("Design controller?") == 'y':
+        K_Qparam, data = Q_synthesis(
+            Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
+            Ntaps=800, Nstep=1000)
     # analysis Qparam
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='design plant')
@@ -438,7 +451,6 @@ def main():
 
         Pz_open = plantMdelta(E_gain=60)
         analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
-
 
         analysis(Pz_design, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
 
