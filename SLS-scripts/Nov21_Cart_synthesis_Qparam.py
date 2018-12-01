@@ -82,8 +82,7 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
     return P
 
 
-def analysis(plant, controller, controller_name='noname',
-             m=0.5, b=10, k=80,
+def analysis(plant, controller, controller_name='noname', m=0.5, b=10, k=80,
              freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
              freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
     """A basic analysis of a plant/controller pair.
@@ -136,6 +135,7 @@ def analysis(plant, controller, controller_name='noname',
     _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * dT)
     Q_imp = Q_imp.flatten()
     axs[0, 0].plot(Q_imp)
+    axs[0, 0].set_title("$Q{\delta[n]}$")
 
     # impulse response, comparison with an ideal mass/spring/damper
     H_model = co.c2d(co.tf([1, 0], [m, b, k]), dT)
@@ -154,21 +154,35 @@ def analysis(plant, controller, controller_name='noname',
     axs[1, 0].text(5, 0.0003, 'model(m={:},b={:},k={:})'.format(
         m, b, k), horizontalalignment='center')
 
-    # frequency responses
-    mag_yn = 20 * np.log10(mag[0, 0])
-    mag_M = 20 * np.log10(mag[1, 1])
-    try:
-        mag_33 = 20 * np.log10(mag[2, 2])  # mapping from intention displacement to force feedback
-        axs[0, 1].plot(freqs, mag_33, label='H22(e^jw)', c='C2')
-    except:
-        pass
+    # nyquist plot of H_yn (noise to output):
+    # This plot is important and should be kept because it shows the
+    # "level of passivity" of the closed-loop system.
+    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
+    axs[2, 1].plot(H_yn.real, H_yn.imag, '-')
+    int_omegas = [6, 10, 24, 30]  # interested angular velocity
+    int_omegas_idx = []
+    for int_omega_ in int_omegas:
+        idx = np.argmin(np.abs(freqs - int_omega_))
+        axs[2, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+        int_omegas_idx.append(idx)
+    axs[2, 1].scatter(H_yn[int_omegas_idx].real, H_yn[int_omegas_idx].imag)
+    axs[2, 1].set_title("Nyquist plot of H_yn(s)")
+    axs[2, 1].grid()
+
+    # frequency response
+    freq_analysis_pairs = [(0, 0), (1, 1), (2, 2), (2, 0)]  # (input, ouput)
+    nb = 0
+    for i, j in freq_analysis_pairs:
+        mag_decibel = 20 * np.log10(mag[j, i])
+        axs[0, 1].plot(freqs, mag_decibel, label='mag(H{:d}{:d})'.format(i, j), c='C{:d}'.format(nb))
+        axs[1, 1].plot(freqs, phase[j, i], label='phase(H{:d}, {:d})'.format(i, j), c='C{:d}'.format(nb))
+        nb += 1
+
     # bounds on H_yn and H_T
-    axs[0, 1].plot(freqs, mag_yn, label='|H00(e^jw)|', c='C0')
-    axs[0, 1].plot(freqs, mag_M, label='|H11(e^jw)|', c='C1')
-    axs[0, 1].plot([w_nyquist, w_nyquist], [
-                   np.min(mag_yn), np.max(mag_yn)], '--', c='red')
+    axs[0, 1].plot([w_nyquist, w_nyquist], [-20, 20], '--', c='red')
     axs[0, 1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='wN(w)^-1')
     axs[0, 1].plot(freqs_bnd_T, mag_bnd_T, 'x--', c='C1', label='wT(w)^-1')
+
     axs[0, 1].set_xscale('log')
     axs[0, 1].set_ylabel('Mag(dB)')
     axs[0, 1].set_xlabel('Freq(rad/s)')
@@ -176,24 +190,8 @@ def analysis(plant, controller, controller_name='noname',
     axs[0, 1].legend()
     axs[0, 1].grid()
 
-    # nyquist plot of H_yn (noise to output):
-
-    # This plot is important and should be kept because it shows the
-    # "level of passivity" of the closed-loop system.
-    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
-    axs[2, 1].plot(H_yn.real, H_yn.imag, '-')
-    axs[2, 1].set_title("Nyquist plot of H_yn(s)")
-    axs[2, 1].grid()
-
-    int_omegas = [6, 10, 50, 80]  # interested angular velocity
-    for int_omega_ in int_omegas:
-        idx = np.argmin(np.abs(freqs - int_omega_))
-        axs[2, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
-
     # Axs[1,1]: phase lag plot
     axs[1, 1].set_title("phase lag")
-    axs[1, 1].plot(freqs, phase[0, 0], label='phase{H00}', c='C0')
-    axs[1, 1].plot(freqs, phase[2, 2], label='phase{H22}', c='C2')
     axs[1, 1].set_xscale('log')
     axs[1, 1].grid()
     axs[1, 1].legend()
@@ -376,7 +374,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     # form individual filter
     taps = weight.value[2:] * dt
     Q_fir = co.tf(taps, [1] + [0] * (Ntaps - 1), dt)
-    Q = Ss.tf2ss(Q_fir, minreal=True, via_matlab=False)
+    Q = Ss.tf2ss(Q_fir, minreal=True, via_matlab=True)
     K = co.feedback(Q, Pyu, sign=-1)
 
     return K, {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
@@ -431,7 +429,7 @@ def main():
     }
 
     # impulse response and weight
-    imp_desired = desired_impulse(m=6, b=18, k=5, Nstep=1000)
+    imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
     imp_weight = np.zeros(1000)
     imp_weight[:] = 1
     plt.plot(imp_desired); plt.show()
@@ -441,21 +439,21 @@ def main():
     # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
     if input("Design controller?") == 'y':
-        K_Qparam, data = Q_synthesis(
-            Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
-            Ntaps=800, Nstep=1000)
+        K_Qparam, data = Q_synthesis(Pz_design, imp_desired=imp_desired,
+                                     imp_weight=imp_weight, Ntaps=800, Nstep=1000)
 
     # analysis Qparam
     if input("Analyze stuffs? y/[n]") == 'y':
-        analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='design plant')
+        analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='Qparam')
 
-        Pz_contract = plantMdelta(E_gain=50, N_in=2, N_out=2, sys_type='33_mult_unt')
+        Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
         analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
 
-        Pz_open = plantMdelta(E_gain=60)
+        Pz_open = plantMdelta(E_gain=1, sys_type='33_mult_unt', N_in=2, N_out=2)
         analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
         analysis(Pz_design, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
+        analysis(Pz_open, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
