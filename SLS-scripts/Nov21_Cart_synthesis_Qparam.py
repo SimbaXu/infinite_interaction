@@ -39,9 +39,9 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
     Args:
         wI (float): Can be a complex function.  Uncertainty in the exogeneous agent.
         sys_type (str, optional): Type of plant.
-            - 22_mult_unt: (2, 2) system with multiplicative uncertainty;
+            - 22_mult_unt: (2, 2) system with multiplicative uncertainty; See Muji-1811, page4a.
             - 22_inv_mult_unt: (2, 2) system with inverse multiplicative uncertainty;
-            - 33_mult_unt: (3, 3) system with multiplicative uncertainty.
+            - 33_mult_unt: (3, 3) system with multiplicative uncertainty. See Muji-1811, page4.
         N_in (int, optional): Nb. of delay steps in the input path.
         N_out (int, optional): Nb. of delay steps in the output path.
     """
@@ -87,6 +87,8 @@ def analysis(plant, controller, controller_name='noname',
              freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
              freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
     """A basic analysis of a plant/controller pair.
+
+    Signals are enumerated from 0.
 
     Simulate the system and draw several plots.
 
@@ -157,12 +159,12 @@ def analysis(plant, controller, controller_name='noname',
     mag_M = 20 * np.log10(mag[1, 1])
     try:
         mag_33 = 20 * np.log10(mag[2, 2])  # mapping from intention displacement to force feedback
-        axs[0, 1].plot(freqs, mag_33, label='H33(e^jw)', c='C2')
+        axs[0, 1].plot(freqs, mag_33, label='H22(e^jw)', c='C2')
     except:
         pass
     # bounds on H_yn and H_T
-    axs[0, 1].plot(freqs, mag_yn, label='|H11(e^jw)|', c='C0')
-    axs[0, 1].plot(freqs, mag_M, label='|H22(e^jw)|', c='C1')
+    axs[0, 1].plot(freqs, mag_yn, label='|H00(e^jw)|', c='C0')
+    axs[0, 1].plot(freqs, mag_M, label='|H11(e^jw)|', c='C1')
     axs[0, 1].plot([w_nyquist, w_nyquist], [
                    np.min(mag_yn), np.max(mag_yn)], '--', c='red')
     axs[0, 1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='wN(w)^-1')
@@ -190,8 +192,8 @@ def analysis(plant, controller, controller_name='noname',
 
     # Axs[1,1]: phase lag plot
     axs[1, 1].set_title("phase lag")
-    axs[1, 1].plot(freqs, phase[0, 0], label='phase{H00}')
-    axs[1, 1].plot(freqs, phase[2, 2], label='phase{H22}')
+    axs[1, 1].plot(freqs, phase[0, 0], label='phase{H00}', c='C0')
+    axs[1, 1].plot(freqs, phase[2, 2], label='phase{H22}', c='C2')
     axs[1, 1].set_xscale('log')
     axs[1, 1].grid()
     axs[1, 1].legend()
@@ -374,7 +376,7 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     # form individual filter
     taps = weight.value[2:] * dt
     Q_fir = co.tf(taps, [1] + [0] * (Ntaps - 1), dt)
-    Q = Ss.mtf2ss(Q_fir, minreal=True)
+    Q = Ss.tf2ss(Q_fir, minreal=True, via_matlab=False)
     K = co.feedback(Q, Pyu, sign=-1)
 
     return K, {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
@@ -442,6 +444,7 @@ def main():
         K_Qparam, data = Q_synthesis(
             Pz_design, imp_desired=imp_desired, imp_weight=imp_weight,
             Ntaps=800, Nstep=1000)
+
     # analysis Qparam
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='design plant')
