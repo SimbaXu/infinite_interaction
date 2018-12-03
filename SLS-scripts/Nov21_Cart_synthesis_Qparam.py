@@ -74,45 +74,35 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
     elif sys_type == "33_mult_unt":
         P = Ss.tf_blocks([
             [0, 0, 0, R1 * z**(- N_in)],
-            [0, 0, E_gain * wI, R1 * sumz * E_gain * wI * z**(-N_in)],
-            [0, 1, E_gain, R1 * sumz * E_gain * z**(-N_in)],
-            [z**(-N_in), z**(-N_in), E_gain * z**(-N_in), (R1 * sumz * E_gain + R2) * z **(-N_in - N_out)]
+            [0, 0, - E_gain * wI, R1 * sumz * E_gain * wI * z**(-N_in)],
+            [0, 1, - E_gain, R1 * sumz * E_gain * z**(-N_in)],
+            [z**(-N_in), z**(-N_in), - E_gain * z**(-N_in), (R1 * sumz * E_gain + R2) * z **(-N_in - N_out)]
         ])
         pass
     return P
 
 
-def analysis(plant, controller, controller_name='noname', m=0.5, b=10, k=80,
-             freqs_bnd_yn=[1e-2, 255], mag_bnd_yn=[-10, -10],
-             freqs_bnd_T=[1e-2, 357], mag_bnd_T=[6, 6]):
+def analysis(plant, controller, analysis_dict, controller_name='noname'):
     """A basic analysis of a plant/controller pair.
 
+    The plant and controller are first combined using a Linear
+    Fractional Transformation to form the closed-loop mapping from
+    exogeneous input to exogeneous output. Analysis are then performed
+    on this closed-loop mapping.
+
     Signals are enumerated from 0.
-
-    Simulate the system and draw several plots.
-
-      1 |  3
-    ----|----
-      2 |  4
-    ---------
-      5 |  6
-
-    1): input output 1
-    2): input output 2
-    3): frequency responses: magnitude
-    4): frequency responses: phases
-    5): nyquist
 
     Args:
         plant: A (3 outputs, 2 inputs) discrete-time LTI system.
         controller: A (1 output, 1 input) discrete-time LTI system.
-        internal_data: The internal responses {R, M, N, L, H} in that
-                       order. Or can be None.
+        analysis_dict: A dictionary containing the analyses to conduct.
+            Kinds of analysis:
+            1) 
+
     """
     H = Ss.lft(plant, controller)
     Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(plant, nu=1, ny=1)
     dT = plant.dt
-    Nsteps = 800
 
     # stability
     w, q = np.linalg.eig(H.A)
@@ -122,79 +112,97 @@ def analysis(plant, controller, controller_name='noname', m=0.5, b=10, k=80,
     else:
         print(" -- Closed-loop system STABLE. w_max={:}".format(wmax))
 
-    # spectral analysis
-    w_nyquist = np.pi / dT
-    freqs = np.logspace(-2, np.log10(w_nyquist) - 1e-2, 1000)
-    mag, phase, omega = H.freqresp(freqs)
+    Nsteps = 800
+    freqs = analysis_dict['freqs']
+    T_sim = np.arange(Nsteps) * dT
+    nrow, ncol = analysis_dict['row_col']
+    fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
 
-    # step and impulse response
-    fig, axs = plt.subplots(3, 2, figsize=(10, 10))
+    for entry in analysis_dict['recipe']:
+        i, j = entry[0], entry[1]
 
-    # Q-params
-    Q = co.feedback(controller, Pyu, sign=1)
-    _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * dT)
-    Q_imp = Q_imp.flatten()
-    axs[0, 0].plot(Q_imp)
-    axs[0, 0].set_title("$Q{\delta[n]}$")
+        plot_type = entry[2]
 
-    # impulse response, comparison with an ideal mass/spring/damper
-    H_model = co.c2d(co.tf([1, 0], [m, b, k]), dT)
-    T_imp = np.arange(Nsteps) * dT
-    _, y_imp = co.impulse_response(H[0, 0], T_imp)
-    _, y_imp_model = co.impulse_response(H_model, T_imp)
+        if plot_type == 'q':
+            Q = co.feedback(controller, Pyu, sign=1)
+            _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * dT)
+            Q_imp = Q_imp.flatten()
+            axs[i, j].plot(T_sim, Q_imp)
+            axs[i, j].set_title("$Q (\delta[n]) $")
 
-    # step response
-    _, y_step = co.step_response(H[0, 0], T_imp)
+        elif plot_type == 'step_sim':
+            data = entry[3]
 
-    axs[1, 0].plot(T_imp, y_step[0, :], label='step response')
-    axs[1, 0].plot(T_imp, y_imp[0, :], label='h1[n]')
-    axs[1, 0].plot(T_imp, y_imp_model[0, :],
-                   label='vel-impulse[sys(m={:},b={:},k={:})]'.format(m, b, k))
-    axs[1, 0].legend()
-    axs[1, 0].text(5, 0.0003, 'model(m={:},b={:},k={:})'.format(
-        m, b, k), horizontalalignment='center')
+            # the transfer function of the ideal response of the mapping from 
+            # position xd to velocity v is:
+            # s k_E / (ms^2 + bs + k + k_E)
+            H_model = co.c2d(
+                co.tf([data['k_E'], 0], [data['m'], data['b'], data['k'] + data['k_E']]), dT)
+            _, y_ideal = co.step_response(H_model, T_sim)
+            axs[i, j].plot(T_sim, y_ideal[0, :], label='ideal resp.')
+            axs[i, j].set_title('Step response')
 
-    # nyquist plot of H_yn (noise to output):
-    # This plot is important and should be kept because it shows the
-    # "level of passivity" of the closed-loop system.
-    H_yn = mag[0, 0] * np.exp(1j * phase[0, 0])
-    axs[2, 1].plot(H_yn.real, H_yn.imag, '-')
-    int_omegas = [6, 10, 24, 30]  # interested angular velocity
-    int_omegas_idx = []
-    for int_omega_ in int_omegas:
-        idx = np.argmin(np.abs(freqs - int_omega_))
-        axs[2, 1].text(H_yn[idx].real, H_yn[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
-        int_omegas_idx.append(idx)
-    axs[2, 1].scatter(H_yn[int_omegas_idx].real, H_yn[int_omegas_idx].imag)
-    axs[2, 1].set_title("Nyquist plot of H_yn(s)")
-    axs[2, 1].grid()
+        elif plot_type == 'step':
+            # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.step_response(H[output_idx, input_idx], T_sim)
+                axs[i, j].plot(T_sim, y_step[0, :],
+                               label='step resp. H{:d}{:d}'.format(output_idx, input_idx))
+                axs[i, j].set_title('Step response')
 
-    # frequency response
-    freq_analysis_pairs = [(0, 0), (1, 1), (2, 2), (2, 0)]  # (input, ouput)
-    nb = 0
-    for i, j in freq_analysis_pairs:
-        mag_decibel = 20 * np.log10(mag[j, i])
-        axs[0, 1].plot(freqs, mag_decibel, label='mag(H{:d}{:d})'.format(i, j), c='C{:d}'.format(nb))
-        axs[1, 1].plot(freqs, phase[j, i], label='phase(H{:d}, {:d})'.format(i, j), c='C{:d}'.format(nb))
-        nb += 1
+        elif plot_type == 'nyquist':
+            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these are interested frequencies]
+            output_idx, input_idx = entry[3]
+            mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+            H = mag[0, 0] * np.exp(1j * phase[0, 0])
+            axs[i, j].plot(H.real, H.imag, '-', label='H{:d}{:d}'.format(output_idx, input_idx))
 
-    # bounds on H_yn and H_T
-    axs[0, 1].plot([w_nyquist, w_nyquist], [-20, 20], '--', c='red')
-    axs[0, 1].plot(freqs_bnd_yn, mag_bnd_yn, 'x--', c='C0', label='wN(w)^-1')
-    axs[0, 1].plot(freqs_bnd_T, mag_bnd_T, 'x--', c='C1', label='wT(w)^-1')
+            if len(entry) > 4:
+                toplot_idx = []
+                for omega in entry[4]:
+                    idx = np.argmin(np.abs(freqs - omega))
+                    axs[i, j].text(H[idx].real, H[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+                    toplot_idx.append(idx)
+                axs[i, j].scatter(H[toplot_idx].real, H[toplot_idx].imag)
 
-    axs[0, 1].set_xscale('log')
-    axs[0, 1].set_ylabel('Mag(dB)')
-    axs[0, 1].set_xlabel('Freq(rad/s)')
-    axs[0, 1].set_title("Frequency Response")
-    axs[0, 1].legend()
-    axs[0, 1].grid()
+            axs[i, j].set_aspect('equal')
 
-    # Axs[1,1]: phase lag plot
-    axs[1, 1].set_title("phase lag")
-    axs[1, 1].set_xscale('log')
-    axs[1, 1].grid()
-    axs[1, 1].legend()
+        elif plot_type == 'bode_mag':
+            # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                axs[i, j].plot(freqs, mag[0, 0], label='H{:d}{:d}'.format(output_idx, input_idx))
+
+            axs[i, j].set_xscale('log')
+            axs[i, j].set_yscale('log')
+            axs[i, j].set_xlabel('Freq(rad/s)')
+            axs[i, j].set_title("Frequency Response (non-db)")
+
+        elif plot_type == 'bode_phs':
+            # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label='H{:d}{:d}'.format(output_idx, input_idx))
+
+            for mult in range(-2, 2):
+                axs[i, j].plot([freqs[0], freqs[-1]], [90 * mult, 90 * mult], '--', c='red')
+
+            axs[i, j].set_xscale('log')
+            axs[i, j].set_xlabel('Freq(rad/s)')
+            axs[i, j].set_title("Phase lag")
+
+    
+    if 'sharex' in analysis_dict.keys():
+        for (i1, j1), (i2, j2) in analysis_dict['sharex']:
+            axs[i1, j1].get_shared_x_axes().join(axs[i1, j1], axs[i2, j2])
+
+    for i in range(nrow):
+        for j in range(ncol):
+            axs[i, j].grid()
+            axs[i, j].legend()
 
     fig.suptitle('Analysis plots: {:}'.format(controller_name))
     plt.tight_layout()
@@ -436,24 +444,37 @@ def main():
 
     Pz_design = plantMdelta(
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
-    # Pz_design = plantMdelta(E_gain=50, wI=1.0, sys_type='22_mult_unt', m_int=0.15, N_in=2, N_out=1)
 
     if input("Design controller?") == 'y':
         K_Qparam, data = Q_synthesis(Pz_design, imp_desired=imp_desired,
                                      imp_weight=imp_weight, Ntaps=800, Nstep=1000)
+        K_['Qparam'] = K_Qparam
 
-    # analysis Qparam
+    analysis_dict = {
+        'row_col': (3, 2),
+        'freqs': np.logspace(-2, np.log10(np.pi / dt) - 1e-2, 100),
+        'sharex': ([(0, 1), (1, 1)], [(0, 0), (1, 0)]),
+        'recipe': [
+            (0, 0, 'q', ),
+            (1, 0, 'step', (0, 2)),
+            (1, 0, 'step_sim', {'m': 4, 'b': 18, 'k': 0, 'k_E': 50}),
+            (0, 1, 'bode_mag', (0, 0), (2, 0)),
+            (1, 1, 'bode_phs', (0, 0), (2, 0)),
+            (2, 1, 'nyquist', (0, 0), [1, 10, 24, 50])
+        ]
+    }
+
     if input("Analyze stuffs? y/[n]") == 'y':
-        analysis(Pz_design, K_Qparam, m=4, b=12, k=0, controller_name='Qparam')
+        analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
 
-        Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
-        analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
+        # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
+        # analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
 
-        Pz_open = plantMdelta(E_gain=1, sys_type='33_mult_unt', N_in=2, N_out=2)
-        analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
+        # Pz_open = plantMdelta(E_gain=1, sys_type='33_mult_unt', N_in=2, N_out=2)
+        # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
-        analysis(Pz_design, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
-        analysis(Pz_open, K_['admittance'], m=4, b=12, k=0, controller_name="admittance")
+    if input("Analyze Admittance controller") == 'y':
+        analysis(Pz_design, K_['admittance'], analysis_dict, controller_name="admittance")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
