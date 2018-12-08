@@ -9,19 +9,19 @@ import cvxpy as cvx
 import yaml
 
 # constant
-dt = 0.008
+Ts = 0.008  # sampling internval
 
 
 def plant(gain_E=20, m_int=0.1):
     """ An old plant model. Not in use currently.
     """
-    z = co.tf([1, 0], [1], dt)
+    z = co.tf([1, 0], [1], Ts)
     s = co.tf([1, 0], [1])
-    zero = co.tf([0], [1], dt)
-    one = co.tf([1], [1], dt)
-    R1 = co.c2d(s / (1 + 0.0437 * s), dt)
-    E = - co.c2d(gain_E / s, dt)  # exo agent
-    R2 = - m_int / dt ** 2 * (1 - z ** (-1)) ** 2  # internally induced
+    zero = co.tf([0], [1], Ts)
+    one = co.tf([1], [1], Ts)
+    R1 = co.c2d(s / (1 + 0.0437 * s), Ts)
+    E = - co.c2d(gain_E / s, Ts)  # exo agent
+    R2 = - m_int / Ts ** 2 * (1 - z ** (-1)) ** 2  # internally induced
 
     P = Ss.tf_blocks([[zero, z**(-1) * R1],  # velocity output
                       [zero, z**(-1) * (R1 * E + R2)],  # to form T = L / (1 + L)
@@ -46,18 +46,18 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
         N_out (int, optional): Nb. of delay steps in the output path.
     """
     # constant transfer function
-    z = co.tf([1, 0], [1], dt)
+    z = co.tf([1, 0], [1], Ts)
     s = co.tf([1, 0], [1])
-    zero = co.tf([0], [1], dt)
-    one = co.tf([1], [1], dt)
+    zero = co.tf([0], [1], Ts)
+    one = co.tf([1], [1], Ts)
 
     E_gain = - abs(E_gain)
 
     # basic blocks
-    R1 = co.c2d(s / (1 + 0.0437 * s), dt)
-    sumz = co.c2d(1 / s, dt)  # discrete-time integrator
+    R1 = co.c2d(s / (1 + 0.0437 * s), Ts)
+    sumz = co.c2d(1 / s, Ts)  # discrete-time integrator
     E = E_gain * sumz  # exo agent
-    R2 = - m_int / dt ** 2 * (1 - z ** (-1)) ** 2  # internally induced
+    R2 = - m_int / Ts ** 2 * (1 - z ** (-1)) ** 2  # internally induced
 
     if sys_type == "22_inv_mult_unt":
         P = Ss.tf_blocks([
@@ -96,13 +96,10 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
         plant: A (3 outputs, 2 inputs) discrete-time LTI system.
         controller: A (1 output, 1 input) discrete-time LTI system.
         analysis_dict: A dictionary containing the analyses to conduct.
-            Kinds of analysis:
-            1) 
-
     """
     H = Ss.lft(plant, controller)
     Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(plant, nu=1, ny=1)
-    dT = plant.dt
+    Ts = plant.dt
 
     # stability
     w, q = np.linalg.eig(H.A)
@@ -114,7 +111,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
 
     Nsteps = 800
     freqs = analysis_dict['freqs']
-    T_sim = np.arange(Nsteps) * dT
+    T_sim = np.arange(Nsteps) * Ts
     nrow, ncol = analysis_dict['row_col']
     fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
 
@@ -125,7 +122,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
 
         if plot_type == 'q':
             Q = co.feedback(controller, Pyu, sign=1)
-            _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * dT)
+            _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * Ts)
             Q_imp = Q_imp.flatten()
             axs[i, j].plot(T_sim, Q_imp)
             axs[i, j].set_title("$Q (\delta[n]) $")
@@ -137,7 +134,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             # position xd to velocity v is:
             # s k_E / (ms^2 + bs + k + k_E)
             H_model = co.c2d(
-                co.tf([data['k_E'], 0], [data['m'], data['b'], data['k'] + data['k_E']]), dT)
+                co.tf([data['k_E'], 0], [data['m'], data['b'], data['k'] + data['k_E']]), Ts)
             _, y_ideal = co.step_response(H_model, T_sim)
             axs[i, j].plot(T_sim, y_ideal[0, :], label='ideal resp.')
             axs[i, j].set_title('Step response')
@@ -194,7 +191,6 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             axs[i, j].set_xlabel('Freq(rad/s)')
             axs[i, j].set_title("Phase lag")
 
-    
     if 'sharex' in analysis_dict.keys():
         for (i1, j1), (i2, j2) in analysis_dict['sharex']:
             axs[i1, j1].get_shared_x_axes().join(axs[i1, j1], axs[i2, j2])
@@ -209,33 +205,74 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
     plt.show()
 
 
-def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_desired=None, reg=1e-5):
+class Qsyn:
+    """ Collection of sub-routines used in Q-parametriation based synthesis.
     """
+    @staticmethod
+    def obtain_time_response_var(weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw):
+        """ Return a time-reponse variable.
+
+        A basis of delayed impulses is assumed. That is:
+
+            Q = weight[0] * 1 + weight[1] * z^-1 + ... + weight[n - 1] * z^-(n - 1)
+        """
+        import ipdb; ipdb.set_trace()
+        i, j = io_idx
+        if input_kind == 'step':
+            out = co.step_response(Pzw[i, j], T_sim)
+        elif input_kind == 'impulse':
+            out = co.impulse_response(Pzw[i, j], T_sim)
+        Pzw_resp = out[1][0, :]
+        resp = Pzw_resp
+        Nsteps = len(T_sim)
+
+        PzuPyu_resp = None
+        for k in range(weight.shape[0]):
+            if k == 0:
+                if input_kind == 'step':
+                    out = co.step_response((Pzu * Pyw)[i, j], T_sim)
+                elif input_kind == 'impulse':
+                    out = co.impulse_response((Pzu * Pyw)[i, j], T_sim)
+                else:
+                    raise(ValueError("Unknown input kind {:}".format(input_kind)))
+                # assign base response
+                PzuPyu_resp = out[1][0, :] * Ts
+                resp = resp + weight[0] * PzuPyu_resp
+            else:
+                resp_k = np.zeros_like(PzuPyu_resp)
+                resp_k[k:] = PzuPyu_resp[:(Nsteps - k)]
+                resp = resp + weight[k] * resp_k
+        return resp
+
+
+def Q_synthesis(Pz_design, specs):
+    """Synthesize a controller for the given plant.
+
+    A dictionary is used to supplied information to the solver. The
+    solver then do what it wishes to.
+
     """
     # setup
     Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1)
 
-    dt = Pz_design.dt
-    z = co.tf([1, 0], [1], dt)
-    zero = co.tf([0], [1], dt)
+    Ts = Pz_design.dt
+    T_sim = np.arange(specs['Nsteps']) * Ts
 
-    # check and change impulse desired shape
-    if imp_desired is None:
-        raise(ValueError("No desired impulse supplied!"))
-    if imp_desired.shape[0] < Nstep:
-        imp_desired = np.concatenate(
-            (imp_desired, np.zeros(Nstep - imp_desired.shape[0])))
-    else:
-        imp_desired = imp_desired[:Nstep]
+    z = co.tf([1, 0], [1], Ts)
+    zero = co.tf([0], [1], Ts)
+
+    omega_nyquist = np.pi / Ts  # the nyquist frequency
+    freqs = np.linspace(20, omega_nyquist, 100)
+    freqs = np.concatenate((np.linspace(1e-2, 19.9, 100), freqs))
 
     # basis Q elements
     print("--> Form basis closed-loop output mappings")
-    # basis_Qs = [zero, dt / (1 - z**(-1))]  # (0, accumulator)
-    basis_Qs = [zero, zero]  # (0, accumulator)
+    basis_Qs = [] 
     # delay
-    for i in range(Ntaps):
+    for i in range(specs['Ntaps']):
         den = [1] + [0] * i
-        basis_Qs.append(co.tf([dt], den, dt))
+        basis_Qs.append(co.tf([Ts], den, Ts))
+        # Qi = Ts * z^(-i)
 
     # basis output mappings H
     print("--> Form basis closed-loop output mappings")
@@ -244,47 +281,22 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
         H = Pzw + Pzu * Q * Pyw
         basis_Hs.append(H)
 
-    # basis impulse response
-    print("--> Compute basis impulse responses")
-    basis_imps = []
-    # zero and accumulator
-    for i in range(2):
-        H = basis_Hs[i]
-        _, imp = co.impulse_response(H[0, 0], np.arange(Nstep) * dt)
-        basis_imps.append(imp.flatten())
-
-    # impulse response: This code assume that  the last impulse are all finite
-    imp = None
-    for i in range(Ntaps):
-        if i == 0:
-            H = basis_Hs[2]
-            _, imp = co.impulse_response(H[0, 0], np.arange(Nstep) * dt)
-            imp = imp.flatten()
-            basis_imps.append(imp)
-        else:
-            imp_ = np.zeros(Nstep)
-            imp_[i:] = imp[:(Nstep - i)]
-            basis_imps.append(imp_)
-
     # basis frequency response
     print("--> Compute basis frequency responses")
-    omega_nyquist = np.pi / dt
-    omegas = np.linspace(20, omega_nyquist, 100)
-    omegas = np.concatenate((np.linspace(1e-2, 19.9, 100), omegas))
     basis_H00_freqrp = []
     basis_H11_freqrp = []
     basis_H22_freqrp = []
     for H in basis_Hs:
         # H00
-        mag, phase, _ = H[0, 0].freqresp(omegas)
+        mag, phase, _ = H[0, 0].freqresp(freqs)
         freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
         basis_H00_freqrp.append(freqresp)
         # H11
-        mag, phase, _ = H[1, 1].freqresp(omegas)
+        mag, phase, _ = H[1, 1].freqresp(freqs)
         freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
         basis_H11_freqrp.append(freqresp)
         # H22
-        mag, phase, _ = H[2, 2].freqresp(omegas)
+        mag, phase, _ = H[2, 2].freqresp(freqs)
         freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
         basis_H22_freqrp.append(freqresp)
 
@@ -299,15 +311,21 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     # synthesis
     Nvar = len(basis_Qs)
     weight = cvx.Variable(Nvar)
-    constraints = [
-        cvx.sum(weight) == 1
-    ]
+    constraints = []
 
-    imp_var = 0
+    # objective
+    input_kind, io_idx, sys_desired = specs['objective']
+    imp_var = Qsyn.obtain_time_response_var(
+        weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
+    if input_kind == 'step':
+        out = co.step_response(sys_desired, T_sim)
+    elif input_kind == 'impulse':
+        out = co.impulse_response(sys_desired, T_sim)
+    imp_desired = out[1][0, :]
+    cost1 = cvx.norm(imp_var - imp_desired)
     H00_freqrp = 0
     H11_freqrp = 0
     for i in range(Nvar):
-        imp_var += weight[i] * basis_imps[i]
         H00_freqrp += weight[i] * basis_H00_freqrp[i]
         H11_freqrp += weight[i] * basis_H11_freqrp[i]
 
@@ -341,19 +359,19 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     # constraints.append(cvx.sum(imp_var) == 0)
 
     # # good (positive phase lag) passive until w = 4 (not effective)
-    # omega_ths_idx = np.argmin(np.abs(omegas - 8.0))
+    # omega_ths_idx = np.argmin(np.abs(freqs - 8.0))
     # constraints.append(
     #     cvx.imag(H00_freqrp[:omega_ths_idx]) >= 0
     # )
 
     # penalize rapid changes in impulse response
-    imp_diff_mat = np.zeros((Nstep - 1, Nstep))
-    for i in range(Nstep - 1):
+    imp_diff_mat = np.zeros((specs['Nsteps'] - 1, specs['Nsteps']))
+    for i in range(specs['Nsteps'] - 1):
         imp_diff_mat[i, i: i + 2] = [1.0, -1.0]
 
+    imp_weight = np.ones(specs['Nsteps'])
     imp_weight_mat = np.diag(imp_weight)
-    cost1 = cvx.norm(imp_weight_mat * (imp_var - imp_desired))
-    cost2 = reg * cvx.norm1(weight)
+    cost2 = specs['reg'] * cvx.norm1(weight)
     cost3 = cvx.norm(imp_diff_mat * imp_var)
     cost = cost1 + cost2 + cost3
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
@@ -368,9 +386,9 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
     axs[0, 0].plot(imp_weight * 0.004, label="scaled weight")
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
-    axs[1, 0].plot(omegas, np.abs(H00_freqrp.value), label="H00")
-    axs[1, 1].plot(omegas, np.abs(H11_freqrp.value), label="H11")
-    axs[1, 1].plot(omegas, np.abs(H22_freqrp.value), label="H22")
+    axs[1, 0].plot(freqs, np.abs(H00_freqrp.value), label="H00")
+    axs[1, 1].plot(freqs, np.abs(H11_freqrp.value), label="H11")
+    axs[1, 1].plot(freqs, np.abs(H22_freqrp.value), label="H22")
     for i, j in [(1, 0), (1, 1)]:
         axs[i, j].grid()
         axs[i, j].legend()
@@ -380,18 +398,18 @@ def Q_synthesis(Pz_design, imp_weight=np.ones(500), Ntaps=300, Nstep=500, imp_de
 
     # report result
     # form individual filter
-    taps = weight.value[2:] * dt
-    Q_fir = co.tf(taps, [1] + [0] * (Ntaps - 1), dt)
+    taps = weight.value * Ts
+    Q_fir = co.tf(taps, [1] + [0] * (specs['Ntaps'] - 1), Ts)
     Q = Ss.tf2ss(Q_fir, minreal=True, via_matlab=True)
     K = co.feedback(Q, Pyu, sign=-1)
 
     return K, {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
 
 
-def desired_impulse(m=1, b=1, k=1, Nstep=600, dT=0.008):
+def desired_impulse(m=1, b=1, k=1, Nstep=600, Ts=0.008):
     # impulse response, comparison with an ideal mass/spring/damper
-    H_model = co.c2d(co.tf([1, 0], [m, b, k]), dT)
-    T_imp = np.arange(Nstep) * dT
+    H_model = co.c2d(co.tf([1, 0], [m, b, k]), Ts)
+    T_imp = np.arange(Nstep) * Ts
     _, y_imp = co.impulse_response(H_model, T_imp)
     return y_imp.flatten()
 
@@ -433,33 +451,43 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 def main():
 
     K_ = {
-        'admittance': co.c2d(co.tf([1], [6, 18, 15]), dt)
+        'admittance': co.c2d(co.tf([1], [6, 18, 15]), Ts)
     }
 
-    # impulse response and weight
-    imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
-    imp_weight = np.zeros(1000)
-    imp_weight[:] = 1
-    plt.plot(imp_desired); plt.show()
+    # # impulse response and weight
+    # imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
+    # imp_weight = np.zeros(1000)
+    # imp_weight[:] = 1
+    # plt.plot(imp_desired); plt.show()
+
+    # desired response from w3 to z1
+    desired_sys = co.c2d(co.tf([50, 0], [4, 8, 0 + 50]), Ts)
+    desired_sys = co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)
 
     Pz_design = plantMdelta(
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
+    design_dict = {
+        'Ntaps': 800,
+        'Nsteps': 1000,
+        'objective': ['impulse', (0, 0), desired_sys],
+        'reg': 1e-5,
+    }
+
     if input("Design controller?") == 'y':
-        K_Qparam, data = Q_synthesis(Pz_design, imp_desired=imp_desired,
-                                     imp_weight=imp_weight, Ntaps=800, Nstep=1000)
+        K_Qparam, data = Q_synthesis(Pz_design, design_dict)
         K_['Qparam'] = K_Qparam
 
     analysis_dict = {
         'row_col': (3, 2),
-        'freqs': np.logspace(-2, np.log10(np.pi / dt) - 1e-2, 100),
+        'freqs': np.logspace(-2, np.log10(np.pi / Ts) - 1e-2, 100),
         'sharex': ([(0, 1), (1, 1)], [(0, 0), (1, 0)]),
         'recipe': [
             (0, 0, 'q', ),
             (1, 0, 'step', (0, 2)),
             (1, 0, 'step_sim', {'m': 4, 'b': 18, 'k': 0, 'k_E': 50}),
-            (0, 1, 'bode_mag', (0, 0), (2, 0)),
-            (1, 1, 'bode_phs', (0, 0), (2, 0)),
+            (0, 1, 'bode_mag', (0, 0), (2, 0), (2, 2)),
+            (1, 1, 'bode_phs', (0, 0), (2, 0), (2, 2)),
             (2, 1, 'nyquist', (0, 0), [1, 10, 24, 50])
         ]
     }
