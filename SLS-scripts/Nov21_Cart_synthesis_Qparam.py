@@ -429,7 +429,8 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 def main():
 
     K_ = {
-        'admittance': co.c2d(co.tf([1], [6, 18, 15]), Ts)
+        'admittance1': co.c2d(co.tf([1], [2, 18, 0]), Ts),
+        'admittance2': co.c2d(co.tf([1], [6, 18, 0]), Ts)
     }
 
     # # impulse response and weight
@@ -439,16 +440,19 @@ def main():
     # plt.plot(imp_desired); plt.show()
 
     # desired response from w3 to z1
-    desired_sys = co.c2d(co.tf([50, 0], [4, 8, 0 + 50]), Ts)
-    desired_sys = co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)
-
     Pz_design = plantMdelta(
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     design_dict = {
         'Ntaps': 800,
         'Nsteps': 1000,
-        'objective': ['impulse', (0, 0), desired_sys],
+        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [2, 18, 0 + 50]), Ts)],
+
+        # 'objective': ['impulse', (0, 0), co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)],
+        # the impulse-based objective is dropped in favour of the step objective.
+        # The reason is that it is found that the step objectively
+        # leads to better performance.
+
         'reg': 1e-5,
         # list of ((idxi, idxj), function)
         'freq-constraints': [
@@ -467,7 +471,7 @@ def main():
         'recipe': [
             (0, 0, 'q', ),
             (1, 0, 'step', (0, 2)),
-            (1, 0, 'step_sim', {'m': 4, 'b': 18, 'k': 0, 'k_E': 50}),
+            (1, 0, 'step_sim', {'m': 2, 'b': 18, 'k': 0, 'k_E': 50}),
             (0, 1, 'bode_mag', (0, 0), (2, 0), (2, 2)),
             (1, 1, 'bode_phs', (0, 0), (2, 0), (2, 2)),
             (2, 1, 'nyquist', (0, 0), [1, 10, 24, 50])
@@ -484,7 +488,8 @@ def main():
         # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
     if input("Analyze Admittance controller") == 'y':
-        analysis(Pz_design, K_['admittance'], analysis_dict, controller_name="admittance")
+        analysis(Pz_design, K_['admittance1'], analysis_dict, controller_name="admittance1")
+        analysis(Pz_design, K_['admittance2'], analysis_dict, controller_name="admittance2")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
