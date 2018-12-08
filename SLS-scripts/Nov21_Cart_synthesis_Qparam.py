@@ -216,6 +216,7 @@ class Qsyn:
 
             Q = weight[0] * 1 + weight[1] * z^-1 + ... + weight[n - 1] * z^-(n - 1)
         """
+        print(" -- generate time reponse {:}".format(io_idx))
         i, j = io_idx
         if input_kind == 'step':
             out = co.step_response(Pzw[i, j], T_sim)
@@ -226,6 +227,7 @@ class Qsyn:
         Nsteps = len(T_sim)
 
         PzuPyu_resp = None
+        resp_mat = []
         for k in range(weight.shape[0]):
             if k == 0:
                 if input_kind == 'step':
@@ -236,31 +238,43 @@ class Qsyn:
                     raise(ValueError("Unknown input kind {:}".format(input_kind)))
                 # assign base response
                 PzuPyu_resp = out[1][0, :] * Ts
-                resp = resp + weight[0] * PzuPyu_resp
+                resp_mat.append(PzuPyu_resp)
+                # resp = resp + weight[0] * PzuPyu_resp
             else:
                 resp_k = np.zeros_like(PzuPyu_resp)
                 resp_k[k:] = PzuPyu_resp[:(Nsteps - k)]
-                resp = resp + weight[k] * resp_k
+                resp_mat.append(resp_k)
+                # resp = resp + weight[k] * resp_k
+        resp_mat = np.array(resp_mat).T
+        resp = resp + resp_mat * weight
         return resp
 
     def obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw):
-        """ Return a frequency-response variable.
+        """Return a frequency-response variable.
+
+        The frequency-response variable is the sum of basis
+        responses. The basis Q(s) are delayed impulse with magnitude
+        Ts.
+
         """
+        print(" -- generate frequency reponse {:}".format(io_idx))
         i, j = io_idx
         mag, phase, _ = Pzw[i, j].freqresp(freqs)
         freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
         delay_operator = np.exp(- 1j * freqs * Ts)
-        import ipdb; ipdb.set_trace()
 
         PzuPyw_resp = None
+        PzuPyw_mat = []
         for k in range(weight.shape[0]):
             if k == 0:
                 mag, phase, _ = (Pzu * Pyw)[i, j].freqresp(freqs)
-                PzuPyw_resp = mag[0, 0] * np.exp(1j * phase[0, 0])
-                freqresp += weight[k] * PzuPyw_resp
+                PzuPyw_resp = mag[0, 0] * np.exp(1j * phase[0, 0]) * Ts
+                PzuPyw_mat.append(PzuPyw_resp)
             else:
                 delayed_resp = PzuPyw_resp * delay_operator ** k
-                freqresp += weight[k] * delayed_resp
+                PzuPyw_mat.append(delayed_resp)
+        PzuPyw_mat = np.array(PzuPyw_mat).T
+        freqresp += PzuPyw_mat * weight
         return freqresp
 
 
@@ -278,49 +292,13 @@ def Q_synthesis(Pz_design, specs):
     T_sim = np.arange(specs['Nsteps']) * Ts
 
     z = co.tf([1, 0], [1], Ts)
-    zero = co.tf([0], [1], Ts)
 
     omega_nyquist = np.pi / Ts  # the nyquist frequency
     freqs = np.linspace(20, omega_nyquist, 100)
     freqs = np.concatenate((np.linspace(1e-2, 19.9, 100), freqs))
 
-    # basis Q elements
-    print("--> Form basis closed-loop output mappings")
-    basis_Qs = [] 
-    # delay
-    for i in range(specs['Ntaps']):
-        den = [1] + [0] * i
-        basis_Qs.append(co.tf([Ts], den, Ts))
-
-    # basis output mappings H
-    print("--> Form basis closed-loop output mappings")
-    basis_Hs = []
-    for Q in basis_Qs:
-        H = Pzw + Pzu * Q * Pyw
-        basis_Hs.append(H)
-
-    # # basis frequency response
-    # print("--> Compute basis frequency responses")
-    # basis_H00_freqrp = []
-    # basis_H11_freqrp = []
-    # basis_H22_freqrp = []
-    # for H in basis_Hs:
-    #     # H00
-    #     mag, phase, _ = H[0, 0].freqresp(freqs)
-    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-    #     basis_H00_freqrp.append(freqresp)
-    #     # H11
-    #     mag, phase, _ = H[1, 1].freqresp(freqs)
-    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-    #     basis_H11_freqrp.append(freqresp)
-    #     # H22
-    #     mag, phase, _ = H[2, 2].freqresp(freqs)
-    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-    #     basis_H22_freqrp.append(freqresp)
-
     # synthesis
-    Nvar = len(basis_Qs)
-    weight = cvx.Variable(Nvar)
+    weight = cvx.Variable(specs['Ntaps'])
     constraints = []
 
     # objective: shape time-response
@@ -342,27 +320,6 @@ def Q_synthesis(Pz_design, specs):
             cvx.abs(freq_var) <= func(freqs)
         )
         freq_vars.append(freq_var)
-
-    # # obtain 
-    # H00_freqrp = 0
-    # H11_freqrp = 0
-    # for i in range(Nvar):
-    #     H00_freqrp += weight[i] * basis_H00_freqrp[i]
-    #     H11_freqrp += weight[i] * basis_H11_freqrp[i]
-    # try:
-    #     H22_freqrp = 0
-    #     for i in range(Nvar):
-    #         H22_freqrp += weight[i] * basis_H22_freqrp[i]
-    #     # constraint magnitude of the mapping from displacement to
-    #     # force, did not work very well.
-    #     # constraints.append(cvx.abs(H22_freqrp) <= 55)
-    # except Exception as e:
-    #     print("Unable to constraint H22, error: {:}".format(e))
-
-    # # robust stability
-    # constraints.append(
-    #     cvx.abs(H11_freqrp) <= 1
-    # )
 
     # # noise attenuation:
     # constraints.append(
@@ -394,7 +351,9 @@ def Q_synthesis(Pz_design, specs):
     cost2 = specs['reg'] * cvx.norm1(weight)
     cost3 = cvx.norm(imp_diff_mat * imp_var)
     cost = cost1 + cost2 + cost3
+    print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
+    print(" -- Start solving")
     prob.solve(verbose=True)
     assert(prob.status == 'optimal')
 
