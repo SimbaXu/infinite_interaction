@@ -216,7 +216,6 @@ class Qsyn:
 
             Q = weight[0] * 1 + weight[1] * z^-1 + ... + weight[n - 1] * z^-(n - 1)
         """
-        import ipdb; ipdb.set_trace()
         i, j = io_idx
         if input_kind == 'step':
             out = co.step_response(Pzw[i, j], T_sim)
@@ -243,6 +242,26 @@ class Qsyn:
                 resp_k[k:] = PzuPyu_resp[:(Nsteps - k)]
                 resp = resp + weight[k] * resp_k
         return resp
+
+    def obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw):
+        """ Return a frequency-response variable.
+        """
+        i, j = io_idx
+        mag, phase, _ = Pzw[i, j].freqresp(freqs)
+        freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
+        delay_operator = np.exp(- 1j * freqs * Ts)
+        import ipdb; ipdb.set_trace()
+
+        PzuPyw_resp = None
+        for k in range(weight.shape[0]):
+            if k == 0:
+                mag, phase, _ = (Pzu * Pyw)[i, j].freqresp(freqs)
+                PzuPyw_resp = mag[0, 0] * np.exp(1j * phase[0, 0])
+                freqresp += weight[k] * PzuPyw_resp
+            else:
+                delayed_resp = PzuPyw_resp * delay_operator ** k
+                freqresp += weight[k] * delayed_resp
+        return freqresp
 
 
 def Q_synthesis(Pz_design, specs):
@@ -272,7 +291,6 @@ def Q_synthesis(Pz_design, specs):
     for i in range(specs['Ntaps']):
         den = [1] + [0] * i
         basis_Qs.append(co.tf([Ts], den, Ts))
-        # Qi = Ts * z^(-i)
 
     # basis output mappings H
     print("--> Form basis closed-loop output mappings")
@@ -281,39 +299,31 @@ def Q_synthesis(Pz_design, specs):
         H = Pzw + Pzu * Q * Pyw
         basis_Hs.append(H)
 
-    # basis frequency response
-    print("--> Compute basis frequency responses")
-    basis_H00_freqrp = []
-    basis_H11_freqrp = []
-    basis_H22_freqrp = []
-    for H in basis_Hs:
-        # H00
-        mag, phase, _ = H[0, 0].freqresp(freqs)
-        freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-        basis_H00_freqrp.append(freqresp)
-        # H11
-        mag, phase, _ = H[1, 1].freqresp(freqs)
-        freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-        basis_H11_freqrp.append(freqresp)
-        # H22
-        mag, phase, _ = H[2, 2].freqresp(freqs)
-        freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
-        basis_H22_freqrp.append(freqresp)
-
-    # ## debug impulse respnse
-    # for i in range(5):
-    #     plt.plot(basis_impresps[i], 'x-', label='{:}'.format(i))
-    # for i in range(0, Ntaps, 50):
-    #     plt.plot(basis_impresps[i], 'x-', label='{:}'.format(i))
-    # plt.legend()
-    # plt.show()
+    # # basis frequency response
+    # print("--> Compute basis frequency responses")
+    # basis_H00_freqrp = []
+    # basis_H11_freqrp = []
+    # basis_H22_freqrp = []
+    # for H in basis_Hs:
+    #     # H00
+    #     mag, phase, _ = H[0, 0].freqresp(freqs)
+    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
+    #     basis_H00_freqrp.append(freqresp)
+    #     # H11
+    #     mag, phase, _ = H[1, 1].freqresp(freqs)
+    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
+    #     basis_H11_freqrp.append(freqresp)
+    #     # H22
+    #     mag, phase, _ = H[2, 2].freqresp(freqs)
+    #     freqresp = mag[0, 0] * np.exp(1j * phase[0, 0])
+    #     basis_H22_freqrp.append(freqresp)
 
     # synthesis
     Nvar = len(basis_Qs)
     weight = cvx.Variable(Nvar)
     constraints = []
 
-    # objective
+    # objective: shape time-response
     input_kind, io_idx, sys_desired = specs['objective']
     imp_var = Qsyn.obtain_time_response_var(
         weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
@@ -323,26 +333,36 @@ def Q_synthesis(Pz_design, specs):
         out = co.impulse_response(sys_desired, T_sim)
     imp_desired = out[1][0, :]
     cost1 = cvx.norm(imp_var - imp_desired)
-    H00_freqrp = 0
-    H11_freqrp = 0
-    for i in range(Nvar):
-        H00_freqrp += weight[i] * basis_H00_freqrp[i]
-        H11_freqrp += weight[i] * basis_H11_freqrp[i]
 
-    try:
-        H22_freqrp = 0
-        for i in range(Nvar):
-            H22_freqrp += weight[i] * basis_H22_freqrp[i]
-        # constraint magnitude of the mapping from displacement to
-        # force, did not work very well.
-        # constraints.append(cvx.abs(H22_freqrp) <= 55)
-    except Exception as e:
-        print("Unable to constraint H22, error: {:}".format(e))
+    # frequency-domain constraints
+    freq_vars = []
+    for io_idx, func in specs['freq-constraints']:
+        freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+        constraints.append(
+            cvx.abs(freq_var) <= func(freqs)
+        )
+        freq_vars.append(freq_var)
 
-    # robust stability
-    constraints.append(
-        cvx.abs(H11_freqrp) <= 1
-    )
+    # # obtain 
+    # H00_freqrp = 0
+    # H11_freqrp = 0
+    # for i in range(Nvar):
+    #     H00_freqrp += weight[i] * basis_H00_freqrp[i]
+    #     H11_freqrp += weight[i] * basis_H11_freqrp[i]
+    # try:
+    #     H22_freqrp = 0
+    #     for i in range(Nvar):
+    #         H22_freqrp += weight[i] * basis_H22_freqrp[i]
+    #     # constraint magnitude of the mapping from displacement to
+    #     # force, did not work very well.
+    #     # constraints.append(cvx.abs(H22_freqrp) <= 55)
+    # except Exception as e:
+    #     print("Unable to constraint H22, error: {:}".format(e))
+
+    # # robust stability
+    # constraints.append(
+    #     cvx.abs(H11_freqrp) <= 1
+    # )
 
     # # noise attenuation:
     # constraints.append(
@@ -386,9 +406,8 @@ def Q_synthesis(Pz_design, specs):
     axs[0, 0].plot(imp_weight * 0.004, label="scaled weight")
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
-    axs[1, 0].plot(freqs, np.abs(H00_freqrp.value), label="H00")
-    axs[1, 1].plot(freqs, np.abs(H11_freqrp.value), label="H11")
-    axs[1, 1].plot(freqs, np.abs(H22_freqrp.value), label="H22")
+    for i, freq_var in enumerate(freq_vars):
+        axs[1, 0].plot(freqs, np.abs(freq_var.value), label="freq_var {:d}".format(i))
     for i, j in [(1, 0), (1, 1)]:
         axs[i, j].grid()
         axs[i, j].legend()
@@ -472,6 +491,10 @@ def main():
         'Nsteps': 1000,
         'objective': ['impulse', (0, 0), desired_sys],
         'reg': 1e-5,
+        # list of ((idxi, idxj), function)
+        'freq-constraints': [
+            [(1, 1), lambda omega: 1]
+        ]
     }
 
     if input("Design controller?") == 'y':
