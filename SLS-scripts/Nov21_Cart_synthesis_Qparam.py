@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cvx
 import yaml
+from scipy.interpolate import interp1d
 
 # constant
 Ts = 0.008  # sampling internval
@@ -277,12 +278,44 @@ class Qsyn:
         freqresp += PzuPyw_mat * weight
         return freqresp
 
+    def lambda_log_interpolate(pts, preview=False):
+        """Return a log-log interpolated function.
+
+        Args:
+            pts: List of points.
+            preview (bool, optional): Plot the interpolated function
+                over a wide interval. Only for visualization.
+
+        Returns:
+            a lambda function.
+        """
+        x, y = zip(*pts)
+        xlog = np.log10(x)
+        ylog = np.log10(y)
+        log_interpolator = interp1d(xlog, ylog, fill_value='extrapolate')
+
+        def interpolate_func(xi):
+            return np.power(10, log_interpolator(np.log10(xi)))
+
+        if preview:
+            xdata = np.logspace(-3, 5, 100)
+            ydata = interpolate_func(xdata)
+            plt.plot(xdata, ydata)
+            plt.scatter(x, y)
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.show()
+
+        return interpolate_func
+
 
 def Q_synthesis(Pz_design, specs):
     """Synthesize a controller for the given plant.
 
-    A dictionary is used to supplied information to the solver. The
-    solver then do what it wishes to.
+    A dictionary is used to supply specification to the synthesizer.
+
+    [recipe]: A list of lists.
+    - 
 
     """
     # setup
@@ -314,12 +347,14 @@ def Q_synthesis(Pz_design, specs):
 
     # frequency-domain constraints
     freq_vars = []
+    freq_lambdas = []
     for io_idx, func in specs['freq-constraints']:
         freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
         constraints.append(
             cvx.abs(freq_var) <= func(freqs)
         )
         freq_vars.append(freq_var)
+        freq_lambdas.append(func)
 
     # # noise attenuation:
     # constraints.append(
@@ -341,15 +376,19 @@ def Q_synthesis(Pz_design, specs):
     #     cvx.imag(H00_freqrp[:omega_ths_idx]) >= 0
     # )
 
-    # penalize rapid changes in impulse response
-    imp_diff_mat = np.zeros((specs['Nsteps'] - 1, specs['Nsteps']))
+    # penalize rapid changes in Q
+    diffQ = np.zeros((specs['Ntaps'] - 1, specs['Ntaps']))
+    for i in range(specs['Ntaps'] - 1):
+        diffQ[i, i: i + 2] = [1.0, -1.0]
+
+    diffY = np.zeros((specs['Nsteps'] - 1, specs['Nsteps']))
     for i in range(specs['Nsteps'] - 1):
-        imp_diff_mat[i, i: i + 2] = [1.0, -1.0]
+        diffY[i, i: i + 2] = [1.0, -1.0]
 
     imp_weight = np.ones(specs['Nsteps'])
-    imp_weight_mat = np.diag(imp_weight)
-    cost2 = specs['reg'] * cvx.norm1(weight)
-    cost3 = cvx.norm(imp_diff_mat * imp_var)
+    cost2 = specs['reg'] * cvx.norm1(weight * Ts)
+    cost3 = specs['reg_diff_Q'] * cvx.norm(diffQ * weight * Ts, p=2)
+    cost4 = specs['reg_diff_Y'] * cvx.norm(diffY * imp_var)
     cost = cost1 + cost2 + cost3
     print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
@@ -357,8 +396,16 @@ def Q_synthesis(Pz_design, specs):
     prob.solve(verbose=True)
     assert(prob.status == 'optimal')
 
+    print("cost: cost1={:f}, cost2={:f},\n      cost3={:f} cost4={:f}".format(cost1.value, cost2.value, cost3.value, cost4.value))
+    print("Explanations:\n"
+          "cost1: |y[n] - y_ideal[n]|_2\n"
+          "cost2: |Q|_1\n"
+          "cost3: |DIFF * Q|_2\n"
+          "cost4: |DIFF * y[n]|_2 (for smooth movement)\n"
+          "where DIFF is the difference matrix."
+    )
+
     # debug
-    print("cost: mse={:f}, reg={:f}, mse diff={:f}".format(cost1.value, cost2.value, cost3.value))
     fig, axs = plt.subplots(2, 2)
     axs[0, 0].plot(imp_var.value, label="imp_var")
     axs[0, 0].plot(imp_desired, label="imp_desired")
@@ -366,7 +413,9 @@ def Q_synthesis(Pz_design, specs):
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
     for i, freq_var in enumerate(freq_vars):
-        axs[1, 0].plot(freqs, np.abs(freq_var.value), label="freq_var {:d}".format(i))
+        axs[1, 0].plot(freqs, np.abs(freq_var.value), label="freq_var {:d}".format(i), c='C{:d}'.format(i))
+        axs[1, 0].plot(freqs, freq_lambdas[i](freqs), '--', label="freq_func {:d}".format(i), c='C{:d}'.format(i))
+
     for i, j in [(1, 0), (1, 1)]:
         axs[i, j].grid()
         axs[i, j].legend()
@@ -429,8 +478,8 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 def main():
 
     K_ = {
-        'admittance1': co.c2d(co.tf([1], [2, 18, 0]), Ts),
-        'admittance2': co.c2d(co.tf([1], [6, 18, 0]), Ts)
+        'ad_light': co.c2d(co.tf([1], [2, 8, 0]), Ts),
+        'ad_heavy': co.c2d(co.tf([1], [6, 18, 0]), Ts)
     }
 
     # # impulse response and weight
@@ -443,10 +492,13 @@ def main():
     Pz_design = plantMdelta(
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
+    noise_atten_func = Qsyn.lambda_log_interpolate(
+        [[0.1, 0.1], [5.25, 0.1], [25, 0.01], [100, 0.01]], preview=True)
+
     design_dict = {
         'Ntaps': 800,
         'Nsteps': 1000,
-        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [2, 18, 0 + 50]), Ts)],
+        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3, 10, 0 + 50]), Ts)],
 
         # 'objective': ['impulse', (0, 0), co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)],
         # the impulse-based objective is dropped in favour of the step objective.
@@ -454,9 +506,12 @@ def main():
         # leads to better performance.
 
         'reg': 1e-5,
+        'reg_diff_Q': 1000,
+        'reg_diff_Y': 10,
         # list of ((idxi, idxj), function)
         'freq-constraints': [
-            [(1, 1), lambda omega: 1]
+            [(1, 1), lambda omega: np.ones_like(omega)],
+            [(0, 0), noise_atten_func],
         ]
     }
 
@@ -471,15 +526,23 @@ def main():
         'recipe': [
             (0, 0, 'q', ),
             (1, 0, 'step', (0, 2)),
-            (1, 0, 'step_sim', {'m': 2, 'b': 18, 'k': 0, 'k_E': 50}),
-            (0, 1, 'bode_mag', (0, 0), (2, 0), (2, 2)),
-            (1, 1, 'bode_phs', (0, 0), (2, 0), (2, 2)),
+            (2, 0, 'step', (2, 2)),
+            (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50}),
+            (0, 1, 'bode_mag', (0, 0), (1, 1)),
+            (1, 1, 'bode_phs', (0, 0), (1, 1)),
             (2, 1, 'nyquist', (0, 0), [1, 10, 24, 50])
         ]
     }
 
+    Pz_contracted = plantMdelta(
+        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+
     if input("Analyze stuffs? y/[n]") == 'y':
+
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50})
         analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 100})
+        analysis(Pz_contracted, K_Qparam, analysis_dict, controller_name='Qparam')
 
         # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
         # analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
@@ -488,8 +551,12 @@ def main():
         # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
     if input("Analyze Admittance controller") == 'y':
-        analysis(Pz_design, K_['admittance1'], analysis_dict, controller_name="admittance1")
-        analysis(Pz_design, K_['admittance2'], analysis_dict, controller_name="admittance2")
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50})
+        analysis(Pz_design, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 100})
+        analysis(Pz_contracted, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 6, 'b': 18, 'k': 0, 'k_E': 50})
+        analysis(Pz_design, K_['ad_heavy'], analysis_dict, controller_name="ad_heavy")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
