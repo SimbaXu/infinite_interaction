@@ -325,8 +325,6 @@ def Q_synthesis(Pz_design, specs):
     T_sim = np.arange(specs['Nsteps']) * Ts
 
     z = co.tf([1, 0], [1], Ts)
-
-    omega_nyquist = np.pi / Ts  # the nyquist frequency
     freqs = specs['freqs']
 
     # synthesis
@@ -345,15 +343,29 @@ def Q_synthesis(Pz_design, specs):
     cost1 = cvx.norm(imp_var - imp_desired)
 
     # frequency-domain constraints
-    freq_vars = []
-    freq_lambdas = []
+    freq_vars = {}
     for io_idx, func in specs['freq-constraints']:
         freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
         constraints.append(
             cvx.abs(freq_var) <= func(freqs)
         )
-        freq_vars.append(freq_var)
-        freq_lambdas.append(func)
+        freq_vars[io_idx] = freq_var
+
+    for io_idx, wc in specs['passivity']:
+        if io_idx in freq_vars:
+            freq_var = freq_vars[io_idx]
+        else:
+            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+            freq_vars[io_idx] = freq_var
+        # freqs[idx_wc] is the smallest rotationl velocity that is greater than wc
+        idx_wc = 0
+        while freqs[idx_wc] < wc:
+            idx_wc += 1
+        assert(freqs[idx_wc] > wc)
+        constraints.append(
+            cvx.real(freq_var[:idx_wc]) >= 0
+        )
+        print("Passivity constraint accounted for with wc={:f}".format(freqs[idx_wc]))
 
     # # noise attenuation:
     # constraints.append(
@@ -411,10 +423,14 @@ def Q_synthesis(Pz_design, specs):
     axs[0, 0].plot(imp_weight * 0.004, label="scaled weight")
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
-    for i, freq_var in enumerate(freq_vars):
-        axs[1, 0].plot(freqs, np.abs(freq_var.value), label="freq_var {:d}".format(i), c='C{:d}'.format(i))
-        axs[1, 0].plot(freqs, freq_lambdas[i](freqs), '--', label="freq_func {:d}".format(i), c='C{:d}'.format(i))
-
+    _i = 0
+    for io_idx, func in specs['freq-constraints']:
+        freq_var = freq_vars[io_idx]
+        axs[1, 0].plot(
+            freqs, np.abs(freq_var.value), label="H{:}".format(io_idx), c='C{:d}'.format(_i))
+        axs[1, 0].plot(
+            freqs, func(freqs), '--', c='C{:d}'.format(_i))
+        _i += 1
     for i, j in [(1, 0), (1, 1)]:
         axs[i, j].grid()
         axs[i, j].legend()
@@ -477,7 +493,7 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 def main():
 
     K_ = {
-        'ad_light': co.c2d(co.tf([1], [2, 8, 0]), Ts),
+        'ad_light': co.c2d(co.tf([1], [3, 12, 0]), Ts),
         'ad_heavy': co.c2d(co.tf([1], [6, 18, 0]), Ts)
     }
 
@@ -497,7 +513,7 @@ def main():
     design_dict = {
         'Ntaps': 800,
         'Nsteps': 1000,
-        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3, 10, 0 + 50]), Ts)],
+        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3, 12, 0 + 50]), Ts)],
         # frequencies to apply constraint on
         'freqs': np.logspace(-2, np.log10(np.pi / Ts) - 1e-2, 100),
 
@@ -506,14 +522,23 @@ def main():
         # The reason is that it is found that the step objectively
         # leads to better performance.
 
+        # regulation parameter
         'reg': 1e-5,
         'reg_diff_Q': 1000,
         'reg_diff_Y': 10,
+
         # list of ((idxi, idxj), function)
+        # frequency-domain constraint: H_ij(e^jwT) <= func(w)
         'freq-constraints': [
             [(1, 1), lambda omega: np.ones_like(omega)],
             [(0, 0), noise_atten_func],
+        ],
+
+        # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
+        'passivity': [
+            [(0, 0), 30]
         ]
+
     }
 
     if input("Design controller?") == 'y':
@@ -539,10 +564,9 @@ def main():
         E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     if input("Analyze stuffs? y/[n]") == 'y':
-
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50})
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 50})
         analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 100})
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 100})
         analysis(Pz_contracted, K_Qparam, analysis_dict, controller_name='Qparam')
 
         # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
@@ -552,9 +576,9 @@ def main():
         # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
     if input("Analyze Admittance controller") == 'y':
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50})
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 50})
         analysis(Pz_design, K_['ad_light'], analysis_dict, controller_name="ad_light")
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 100})
+        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 100})
         analysis(Pz_contracted, K_['ad_light'], analysis_dict, controller_name="ad_light")
         analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 6, 'b': 18, 'k': 0, 'k_E': 50})
         analysis(Pz_design, K_['ad_heavy'], analysis_dict, controller_name="ad_heavy")
