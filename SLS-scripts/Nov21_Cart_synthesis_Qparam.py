@@ -327,8 +327,7 @@ def Q_synthesis(Pz_design, specs):
     z = co.tf([1, 0], [1], Ts)
 
     omega_nyquist = np.pi / Ts  # the nyquist frequency
-    freqs = np.linspace(20, omega_nyquist, 100)
-    freqs = np.concatenate((np.linspace(1e-2, 19.9, 100), freqs))
+    freqs = specs['freqs']
 
     # synthesis
     weight = cvx.Variable(specs['Ntaps'])
@@ -499,6 +498,8 @@ def main():
         'Ntaps': 800,
         'Nsteps': 1000,
         'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3, 10, 0 + 50]), Ts)],
+        # frequencies to apply constraint on
+        'freqs': np.logspace(-2, np.log10(np.pi / Ts) - 1e-2, 100),
 
         # 'objective': ['impulse', (0, 0), co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)],
         # the impulse-based objective is dropped in favour of the step objective.
