@@ -25,8 +25,10 @@ def plant(gain_E=20, m_int=0.1):
     R2 = - m_int / Ts ** 2 * (1 - z ** (-1)) ** 2  # internally induced
 
     P = Ss.tf_blocks([[zero, z**(-1) * R1],  # velocity output
-                      [zero, z**(-1) * (R1 * E + R2)],  # to form T = L / (1 + L)
-                      [one, z**(-1) * (R1 * E + R2)],  # to form S = 1 / (1 + L)
+                      # to form T = L / (1 + L)
+                      [zero, z**(-1) * (R1 * E + R2)],
+                      # to form S = 1 / (1 + L)
+                      [one, z**(-1) * (R1 * E + R2)],
                       [z**(-1), z**(-2) * (R1 * E + R2)]])
     return P
 
@@ -77,7 +79,8 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
             [0, 0, 0, R1 * z**(- N_in)],
             [0, 0, - E_gain * wI, R1 * sumz * E_gain * wI * z**(-N_in)],
             [0, 1, - E_gain, R1 * sumz * E_gain * z**(-N_in)],
-            [z**(-N_in), z**(-N_in), - E_gain * z**(-N_in), (R1 * sumz * E_gain + R2) * z **(-N_in - N_out)]
+            [z**(-N_in), z**(-N_in), - E_gain * z**(-N_in),
+             (R1 * sumz * E_gain + R2) * z ** (-N_in - N_out)]
         ])
         pass
     return P
@@ -101,7 +104,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
 
     """
     H = Ss.lft(plant, controller)
-    Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(plant, nu=1, ny=1)
+    Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(
+        plant, nu=1, ny=1)
     Ts = plant.dt
 
     # stability
@@ -130,10 +134,10 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * Ts)
             Q_imp = Q_imp.flatten()
             axs[i, j].plot(T_sim, Q_imp)
-            axs[i, j].set_title("$Q (\delta[n]) $")
+            axs[i, j].set_title(r"$Q (\delta[n]) $")
 
         elif plot_type == 'step_sim':
-            # the transfer function of the ideal response of the mapping from 
+            # the transfer function of the ideal response of the mapping from
             # position xd to velocity v is:
             # s k_E / (ms^2 + bs + k + k_E)
             _, y_ideal = co.step_response(H_vsys, T_sim)
@@ -161,7 +165,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
             for k in range(3, len(entry)):
                 output_idx, input_idx = entry[k]
-                _, y_step = co.impulse_response(H[output_idx, input_idx], T_sim)
+                _, y_step = co.impulse_response(
+                    H[output_idx, input_idx], T_sim)
                 axs[i, j].plot(T_sim, y_step[0, :],
                                label='imp. resp. H{:d}{:d}'.format(output_idx, input_idx))
                 axs[i, j].set_title('Impulse response')
@@ -178,17 +183,20 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
                 axs[i, j].set_title('Step response integral')
 
         elif plot_type == 'nyquist':
-            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these are interested frequencies]
+            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these
+            # are interested frequencies]
             output_idx, input_idx = entry[3]
             mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
             H = mag[0, 0] * np.exp(1j * phase[0, 0])
-            axs[i, j].plot(H.real, H.imag, '-', label='H{:d}{:d}'.format(output_idx, input_idx))
+            axs[i, j].plot(H.real, H.imag, '-',
+                           label='H{:d}{:d}'.format(output_idx, input_idx))
 
             if len(entry) > 4:
                 toplot_idx = []
                 for omega in entry[4]:
                     idx = np.argmin(np.abs(freqs - omega))
-                    axs[i, j].text(H[idx].real, H[idx].imag, "{:.3f} rad/s".format(freqs[idx]))
+                    axs[i, j].text(H[idx].real, H[idx].imag,
+                                   "{:.3f} rad/s".format(freqs[idx]))
                     toplot_idx.append(idx)
                 axs[i, j].scatter(H[toplot_idx].real, H[toplot_idx].imag)
 
@@ -199,7 +207,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             for k in range(3, len(entry)):
                 if len(entry[k]) == 2:
                     output_idx, input_idx = entry[k]
-                    mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                    mag, phase, freqs = H[output_idx,
+                                          input_idx].freqresp(freqs)
                     label = 'H{:d}{:d}'.format(output_idx, input_idx)
                 elif entry[k] == 'vsys':
                     H_model = co.c2d(
@@ -219,7 +228,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             for k in range(3, len(entry)):
                 if len(entry[k]) == 2:
                     output_idx, input_idx = entry[k]
-                    mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                    mag, phase, freqs = H[output_idx,
+                                          input_idx].freqresp(freqs)
                     label = 'H{:d}{:d}'.format(output_idx, input_idx)
                 elif entry[k] == 'vsys':
                     H_model = co.c2d(
@@ -229,7 +239,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
                 axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label=label)
 
             for mult in range(-2, 2):
-                axs[i, j].plot([freqs[0], freqs[-1]], [90 * mult, 90 * mult], '--', c='red')
+                axs[i, j].plot([freqs[0], freqs[-1]],
+                               [90 * mult, 90 * mult], '--', c='red')
 
             axs[i, j].set_xscale('log')
             axs[i, j].set_xlabel('Freq(rad/s)')
@@ -253,7 +264,8 @@ class Qsyn:
     """ Collection of sub-routines used in Q-parametriation based synthesis.
     """
     @staticmethod
-    def obtain_time_response_var(weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw):
+    def obtain_time_response_var(
+            weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw):
         """ Return a time-reponse variable.
 
         A basis of delayed impulses is assumed. That is:
@@ -279,7 +291,9 @@ class Qsyn:
                 elif input_kind == 'impulse':
                     out = co.impulse_response((Pzu * Pyw)[i, j], T_sim)
                 else:
-                    raise(ValueError("Unknown input kind {:}".format(input_kind)))
+                    raise(
+                        ValueError(
+                            "Unknown input kind {:}".format(input_kind)))
                 # assign base response
                 PzuPyu_resp = out[1][0, :] * Ts
                 resp_mat.append(PzuPyu_resp)
@@ -323,7 +337,8 @@ class Qsyn:
 
         # check if the frequency condition is for DC gain
         if len(freqs) == 1 and freqs[0] == 1e-5:
-            import ipdb; ipdb.set_trace()
+            import ipdb
+            ipdb.set_trace()
         freqresp += PzuPyw_mat * weight
         return freqresp
 
@@ -368,7 +383,8 @@ def Q_synthesis(Pz_design, specs):
 
     """
     # setup
-    Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1)
+    Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(
+        Pz_design, nu=1, ny=1)
 
     Ts = Pz_design.dt
     T_sim = np.arange(specs['Nsteps']) * Ts
@@ -393,7 +409,8 @@ def Q_synthesis(Pz_design, specs):
         out_1 = np.cumsum(out[1], axis=1) * Ts
         out = (0, out_1)  # TODO: bad hack, improve this
     imp_desired = out[1][0, :]
-    imp_desired[specs['resp_delay']:] = imp_desired[:specs['Nsteps'] - specs['resp_delay']]
+    imp_desired[specs['resp_delay']
+        :] = imp_desired[:specs['Nsteps'] - specs['resp_delay']]
     imp_desired[:specs['resp_delay']] = 0
     cost1 = obj_weight * cvx.norm(imp_var - imp_desired)
 
@@ -412,7 +429,8 @@ def Q_synthesis(Pz_design, specs):
         if io_idx in freq_vars:
             freq_var = freq_vars[io_idx]
         else:
-            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+            freq_var = Qsyn.obtain_freq_var(
+                weight, io_idx, freqs, Pzw, Pzu, Pyw)
             freq_vars[io_idx] = freq_var
         cost_inf += cvx.norm(freq_var - func(freqs), 'inf')
 
@@ -421,9 +439,11 @@ def Q_synthesis(Pz_design, specs):
         if io_idx in freq_vars:
             freq_var = freq_vars[io_idx]
         else:
-            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+            freq_var = Qsyn.obtain_freq_var(
+                weight, io_idx, freqs, Pzw, Pzu, Pyw)
             freq_vars[io_idx] = freq_var
-        # freqs[idx_wc] is the smallest rotationl velocity that is greater than wc
+        # freqs[idx_wc] is the smallest rotationl velocity that is greater than
+        # wc
         idx_wc = 0
         while freqs[idx_wc] < wc:
             idx_wc += 1
@@ -431,7 +451,9 @@ def Q_synthesis(Pz_design, specs):
         constraints.append(
             cvx.real(freq_var[:idx_wc]) >= 0
         )
-        print("Passivity constraint accounted for with wc={:f}".format(freqs[idx_wc]))
+        print(
+            "Passivity constraint accounted for with wc={:f}".format(
+                freqs[idx_wc]))
 
     # dc-gain
     for io_idx, gain in specs['dc-gain']:
@@ -442,7 +464,6 @@ def Q_synthesis(Pz_design, specs):
         constraints.append(
             cvx.sum(imp_var_) == gain
         )
-
 
     # # noise attenuation:
     # constraints.append(
@@ -494,8 +515,7 @@ def Q_synthesis(Pz_design, specs):
           "cost2: |Q|_1\n"
           "cost3: |DIFF * Q|_2\n"
           "cost4: |DIFF * y[n]|_2 (for smooth movement)\n"
-          "where DIFF is the difference matrix."
-    )
+          "where DIFF is the difference matrix.")
 
     # debug
     fig, axs = plt.subplots(2, 2)
@@ -668,7 +688,11 @@ def main():
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
         analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
-        analysis(Pz_contracted, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis(
+            Pz_contracted,
+            K_Qparam,
+            analysis_dict,
+            controller_name='Qparam')
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
         analysis(Pz_relaxed, K_Qparam, analysis_dict, controller_name='Qparam')
 
@@ -685,18 +709,30 @@ def main():
 
     if input("Analyze Admittance controller") == 'y':
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
-        analysis(Pz_design, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis(Pz_design, K_['ad_light'],
+                 analysis_dict, controller_name="ad_light")
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
-        analysis(Pz_contracted, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis(Pz_contracted, K_['ad_light'],
+                 analysis_dict, controller_name="ad_light")
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
-        analysis(Pz_relaxed, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis(Pz_relaxed, K_['ad_light'],
+                 analysis_dict, controller_name="ad_light")
 
     if input("Write controller? y/[n]") == 'y':
-        print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
+        print_controller(
+            "../config/Nov21_Cart_synthesis_Qparam_synres.yaml",
+            data['Qtaps'],
+            data['zPyu'])
+
+    if input("Dump Q controller with pickle? y/[n]") == 'y':
+        import pickle
+        with open('Nov21_ctrl.pkl', 'wb') as f:
+            pickle.dump(K_Qparam, f, -1)
 
     import IPython
     if IPython.get_ipython() is None:
         IPython.embed()
+
 
 if __name__ == '__main__':
     main()
