@@ -118,6 +118,8 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
     nrow, ncol = analysis_dict['row_col']
     fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
     vsys = analysis_dict['virtual_sys']
+    H_vsys = co.c2d(
+        co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
     for entry in analysis_dict['recipe']:
         i, j = entry[0], entry[1]
 
@@ -134,9 +136,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             # the transfer function of the ideal response of the mapping from 
             # position xd to velocity v is:
             # s k_E / (ms^2 + bs + k + k_E)
-            H_model = co.c2d(
-                co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
-            _, y_ideal = co.step_response(H_model, T_sim)
+            _, y_ideal = co.step_response(H_vsys, T_sim)
             axs[i, j].plot(T_sim, y_ideal[0, :], label='ideal resp.')
             axs[i, j].set_title('Step response')
 
@@ -598,7 +598,7 @@ def main():
         'resp_delay': 1,  # number of delayed time step
 
         # different objective
-        'objective': ['step_int', (0, 2), desired_sys, 5e-1],
+        'objective': ['step_int', (0, 2), desired_sys, 7e-1],
 
         # 'objective2': ['inf', (0, 2), co.c2d(co.tf([50, 0], [2.5, 21, 0 + 50]), Ts)]
         # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3.5, 21, 0 + 50]), Ts)],
@@ -661,12 +661,16 @@ def main():
 
     Pz_contracted = plantMdelta(
         E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+    Pz_relaxed = plantMdelta(
+        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
         analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(Pz_contracted, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
+        analysis(Pz_relaxed, K_Qparam, analysis_dict, controller_name='Qparam')
 
         # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
         # analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
@@ -680,10 +684,12 @@ def main():
     }
 
     if input("Analyze Admittance controller") == 'y':
-        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 18, 'k': 0, 'k_E': 50}
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
         analysis(Pz_design, K_['ad_light'], analysis_dict, controller_name="ad_light")
-        analysis_dict['virtual_sys'] = {'m': 3, 'b': 21, 'k': 0, 'k_E': 100}
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(Pz_contracted, K_['ad_light'], analysis_dict, controller_name="ad_light")
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
+        analysis(Pz_relaxed, K_['ad_light'], analysis_dict, controller_name="ad_light")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
