@@ -96,7 +96,9 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
     Args:
         plant: A (3 outputs, 2 inputs) discrete-time LTI system.
         controller: A (1 output, 1 input) discrete-time LTI system.
-        analysis_dict: A dictionary containing the analyses to conduct.
+        analysis_dict: A dictionary that contains descriptions of the
+            different analyses to conduct.
+
     """
     H = Ss.lft(plant, controller)
     Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(plant, nu=1, ny=1)
@@ -115,7 +117,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
     T_sim = np.arange(Nsteps) * Ts
     nrow, ncol = analysis_dict['row_col']
     fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
-
+    vsys = analysis_dict['virtual_sys']
     for entry in analysis_dict['recipe']:
         i, j = entry[0], entry[1]
 
@@ -129,15 +131,21 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
             axs[i, j].set_title("$Q (\delta[n]) $")
 
         elif plot_type == 'step_sim':
-            data = entry[3]
-
             # the transfer function of the ideal response of the mapping from 
             # position xd to velocity v is:
             # s k_E / (ms^2 + bs + k + k_E)
             H_model = co.c2d(
-                co.tf([data['k_E'], 0], [data['m'], data['b'], data['k'] + data['k_E']]), Ts)
+                co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
             _, y_ideal = co.step_response(H_model, T_sim)
             axs[i, j].plot(T_sim, y_ideal[0, :], label='ideal resp.')
+            axs[i, j].set_title('Step response')
+
+        elif plot_type == 'step_sim_int':
+            H_model = co.c2d(
+                co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
+            _, y_ideal = co.step_response(H_model, T_sim)
+            y_ideal_int = np.cumsum(y_ideal[0, :]) * Ts
+            axs[i, j].plot(T_sim, y_ideal_int, label='ideal resp. int.')
             axs[i, j].set_title('Step response')
 
         elif plot_type == 'step':
@@ -148,6 +156,26 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
                 axs[i, j].plot(T_sim, y_step[0, :],
                                label='step resp. H{:d}{:d}'.format(output_idx, input_idx))
                 axs[i, j].set_title('Step response')
+
+        elif plot_type == 'impulse':
+            # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.impulse_response(H[output_idx, input_idx], T_sim)
+                axs[i, j].plot(T_sim, y_step[0, :],
+                               label='imp. resp. H{:d}{:d}'.format(output_idx, input_idx))
+                axs[i, j].set_title('Impulse response')
+
+        elif plot_type == 'step_int':
+            # format: i, j, 'step_int', (out_idx, in_idx), (out_idx2, in_idx2)
+            # the integral of the step response
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.step_response(H[output_idx, input_idx], T_sim)
+                y_step_int = np.cumsum(y_step[0, :]) * Ts
+                axs[i, j].plot(T_sim, y_step_int,
+                               label='step resp. int. H{:d}{:d}'.format(output_idx, input_idx))
+                axs[i, j].set_title('Step response integral')
 
         elif plot_type == 'nyquist':
             # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these are interested frequencies]
@@ -169,9 +197,16 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
         elif plot_type == 'bode_mag':
             # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
             for k in range(3, len(entry)):
-                output_idx, input_idx = entry[k]
-                mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
-                axs[i, j].plot(freqs, mag[0, 0], label='H{:d}{:d}'.format(output_idx, input_idx))
+                if len(entry[k]) == 2:
+                    output_idx, input_idx = entry[k]
+                    mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                    label = 'H{:d}{:d}'.format(output_idx, input_idx)
+                elif entry[k] == 'vsys':
+                    H_model = co.c2d(
+                        co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
+                    mag, phase, freqs = H_model.freqresp(freqs)
+                    label = 'vsys'
+                axs[i, j].plot(freqs, mag[0, 0], label=label)
 
             axs[i, j].set_xscale('log')
             axs[i, j].set_yscale('log')
@@ -180,10 +215,18 @@ def analysis(plant, controller, analysis_dict, controller_name='noname'):
 
         elif plot_type == 'bode_phs':
             # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
+
             for k in range(3, len(entry)):
-                output_idx, input_idx = entry[k]
-                mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
-                axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label='H{:d}{:d}'.format(output_idx, input_idx))
+                if len(entry[k]) == 2:
+                    output_idx, input_idx = entry[k]
+                    mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+                    label = 'H{:d}{:d}'.format(output_idx, input_idx)
+                elif entry[k] == 'vsys':
+                    H_model = co.c2d(
+                        co.tf([vsys['k_E'], 0], [vsys['m'], vsys['b'], vsys['k'] + vsys['k_E']]), Ts)
+                    mag, phase, freqs = H_model.freqresp(freqs)
+                    label = 'vsys'
+                axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label=label)
 
             for mult in range(-2, 2):
                 axs[i, j].plot([freqs[0], freqs[-1]], [90 * mult, 90 * mult], '--', c='red')
@@ -219,7 +262,7 @@ class Qsyn:
         """
         print(" -- generate time reponse {:}".format(io_idx))
         i, j = io_idx
-        if input_kind == 'step':
+        if input_kind == 'step' or input_kind == 'step_int':
             out = co.step_response(Pzw[i, j], T_sim)
         elif input_kind == 'impulse':
             out = co.impulse_response(Pzw[i, j], T_sim)
@@ -231,7 +274,7 @@ class Qsyn:
         resp_mat = []
         for k in range(weight.shape[0]):
             if k == 0:
-                if input_kind == 'step':
+                if input_kind == 'step' or input_kind == 'step_int':
                     out = co.step_response((Pzu * Pyw)[i, j], T_sim)
                 elif input_kind == 'impulse':
                     out = co.impulse_response((Pzu * Pyw)[i, j], T_sim)
@@ -248,6 +291,8 @@ class Qsyn:
                 # resp = resp + weight[k] * resp_k
         resp_mat = np.array(resp_mat).T
         resp = resp + resp_mat * weight
+        if input_kind == 'step_int':
+            resp = cvx.cumsum(resp) * Ts
         return resp
 
     def obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw):
@@ -275,6 +320,10 @@ class Qsyn:
                 delayed_resp = PzuPyw_resp * delay_operator ** k
                 PzuPyw_mat.append(delayed_resp)
         PzuPyw_mat = np.array(PzuPyw_mat).T
+
+        # check if the frequency condition is for DC gain
+        if len(freqs) == 1 and freqs[0] == 1e-5:
+            import ipdb; ipdb.set_trace()
         freqresp += PzuPyw_mat * weight
         return freqresp
 
@@ -315,7 +364,7 @@ def Q_synthesis(Pz_design, specs):
     A dictionary is used to supply specification to the synthesizer.
 
     [recipe]: A list of lists.
-    - 
+    -
 
     """
     # setup
@@ -331,16 +380,22 @@ def Q_synthesis(Pz_design, specs):
     weight = cvx.Variable(specs['Ntaps'])
     constraints = []
 
-    # objective: shape time-response
-    input_kind, io_idx, sys_desired = specs['objective']
+    # objective: time-domain based objective
+    input_kind, io_idx, sys_desired, obj_weight = specs['objective']
     imp_var = Qsyn.obtain_time_response_var(
         weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
     if input_kind == 'step':
         out = co.step_response(sys_desired, T_sim)
     elif input_kind == 'impulse':
         out = co.impulse_response(sys_desired, T_sim)
+    elif input_kind == 'step_int':
+        out = co.step_response(sys_desired, T_sim)
+        out_1 = np.cumsum(out[1], axis=1) * Ts
+        out = (0, out_1)  # TODO: bad hack, improve this
     imp_desired = out[1][0, :]
-    cost1 = cvx.norm(imp_var - imp_desired)
+    imp_desired[specs['resp_delay']:] = imp_desired[:specs['Nsteps'] - specs['resp_delay']]
+    imp_desired[:specs['resp_delay']] = 0
+    cost1 = obj_weight * cvx.norm(imp_var - imp_desired)
 
     # frequency-domain constraints
     freq_vars = {}
@@ -351,6 +406,17 @@ def Q_synthesis(Pz_design, specs):
         )
         freq_vars[io_idx] = freq_var
 
+    # min H-infinity norm
+    cost_inf = 0
+    for io_idx, func in specs['freq-bound-min']:
+        if io_idx in freq_vars:
+            freq_var = freq_vars[io_idx]
+        else:
+            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+            freq_vars[io_idx] = freq_var
+        cost_inf += cvx.norm(freq_var - func(freqs), 'inf')
+
+    # passivity
     for io_idx, wc in specs['passivity']:
         if io_idx in freq_vars:
             freq_var = freq_vars[io_idx]
@@ -366,6 +432,17 @@ def Q_synthesis(Pz_design, specs):
             cvx.real(freq_var[:idx_wc]) >= 0
         )
         print("Passivity constraint accounted for with wc={:f}".format(freqs[idx_wc]))
+
+    # dc-gain
+    for io_idx, gain in specs['dc-gain']:
+        # only w=0 is needed
+        imp_var_ = Qsyn.obtain_time_response_var(
+            weight, io_idx, 'impulse', T_sim, Pzw, Pzu, Pyw)
+
+        constraints.append(
+            cvx.sum(imp_var_) == gain
+        )
+
 
     # # noise attenuation:
     # constraints.append(
@@ -400,14 +477,18 @@ def Q_synthesis(Pz_design, specs):
     cost2 = specs['reg'] * cvx.norm1(weight * Ts)
     cost3 = specs['reg_diff_Q'] * cvx.norm(diffQ * weight * Ts, p=2)
     cost4 = specs['reg_diff_Y'] * cvx.norm(diffY * imp_var)
-    cost = cost1 + cost2 + cost3
+    cost5 = specs['reg'] * cvx.norm1(imp_var - imp_desired)
+    cost = cost1 + cost2 + cost3 + cost4 + cost5 + cost_inf
     print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
     print(" -- Start solving")
     prob.solve(verbose=True)
     assert(prob.status == 'optimal')
 
-    print("cost: cost1={:f}, cost2={:f},\n      cost3={:f} cost4={:f}".format(cost1.value, cost2.value, cost3.value, cost4.value))
+    print("cost: cost1={:f}, cost2={:f},\n      cost3={:f} cost4={:f}"
+          "\n     cost5={:f} cost-inf={:f}" .format(
+              cost1.value, cost2.value, cost3.value, cost4.value, cost5.value,
+              cost_inf.value))
     print("Explanations:\n"
           "cost1: |y[n] - y_ideal[n]|_2\n"
           "cost2: |Q|_1\n"
@@ -491,12 +572,6 @@ def print_controller(relative_file_path, Qtaps, zPyu_tf):
 
 
 def main():
-
-    K_ = {
-        'ad_light': co.c2d(co.tf([1], [3, 12, 0]), Ts),
-        'ad_heavy': co.c2d(co.tf([1], [6, 18, 0]), Ts)
-    }
-
     # # impulse response and weight
     # imp_desired = desired_impulse(m=2, b=18, k=5, Nstep=1000)
     # imp_weight = np.zeros(1000)
@@ -508,24 +583,39 @@ def main():
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [5.25, 0.1], [25, 0.01], [100, 0.01]], preview=True)
+        [[0.1, 0.1], [5.25, 0.1], [25, 0.01], [100, 0.005]], preview=True)
+
+    desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
+
+    def desired_sys_up(freqs, desired_sys=desired_sys):
+        return desired_sys.freqresp(freqs)[0][0, 0]
 
     design_dict = {
         'Ntaps': 800,
         'Nsteps': 1000,
-        'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3, 12, 0 + 50]), Ts)],
+        # 'freqs': np.logspace(-2, np.log10(np.pi / Ts), 1000),
+        'freqs': np.linspace(1e-2, np.pi / Ts, 1000),
+        'resp_delay': 1,  # number of delayed time step
+
+        # different objective
+        'objective': ['step_int', (0, 2), desired_sys, 5e-1],
+
+        # 'objective2': ['inf', (0, 2), co.c2d(co.tf([50, 0], [2.5, 21, 0 + 50]), Ts)]
+        # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3.5, 21, 0 + 50]), Ts)],
+        # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [2., 25, 0 + 50]), Ts)],
         # frequencies to apply constraint on
-        'freqs': np.logspace(-2, np.log10(np.pi / Ts) - 1e-2, 100),
 
         # 'objective': ['impulse', (0, 0), co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)],
         # the impulse-based objective is dropped in favour of the step objective.
         # The reason is that it is found that the step objectively
         # leads to better performance.
 
+        # cost different paramerter
+
         # regulation parameter
-        'reg': 1e-5,
-        'reg_diff_Q': 1000,
-        'reg_diff_Y': 10,
+        'reg': 1e-2,
+        'reg_diff_Q': 1e-2,
+        'reg_diff_Y': 1,
 
         # list of ((idxi, idxj), function)
         # frequency-domain constraint: H_ij(e^jwT) <= func(w)
@@ -534,28 +624,37 @@ def main():
             [(0, 0), noise_atten_func],
         ],
 
+        'freq-bound-min': [
+            [(0, 2), desired_sys_up]
+        ],
+
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
             [(0, 0), 30]
-        ]
+        ],
 
+        # DC gain
+        'dc-gain': [
+            [(2, 2), 0]
+        ]
     }
 
     if input("Design controller?") == 'y':
         K_Qparam, data = Q_synthesis(Pz_design, design_dict)
-        K_['Qparam'] = K_Qparam
 
     analysis_dict = {
         'row_col': (3, 2),
-        'freqs': np.logspace(-2, np.log10(np.pi / Ts) - 1e-2, 100),
+        'freqs': np.logspace(-2, np.log10(np.pi / Ts), 200),
         'sharex': ([(0, 1), (1, 1)], [(0, 0), (1, 0)]),
+        'virtual_sys': {'m': 2, 'b': 8, 'k': 0, 'k_E': 50},
         'recipe': [
-            (0, 0, 'q', ),
+            (0, 0, 'impulse', (0, 2)),
+            (2, 0, 'step_int', (0, 2)),
+            (2, 0, 'step_sim_int'),
             (1, 0, 'step', (0, 2)),
-            (2, 0, 'step', (2, 2)),
-            (1, 0, 'step_sim', {'m': 2, 'b': 8, 'k': 0, 'k_E': 50}),
-            (0, 1, 'bode_mag', (0, 0), (1, 1)),
-            (1, 1, 'bode_phs', (0, 0), (1, 1)),
+            (1, 0, 'step_sim'),
+            (0, 1, 'bode_mag', (0, 0), (2, 2), (0, 2), 'vsys'),
+            (1, 1, 'bode_phs', (0, 0), (2, 2), (0, 2), 'vsys'),
             (2, 1, 'nyquist', (0, 0), [1, 10, 24, 50])
         ]
     }
@@ -564,9 +663,9 @@ def main():
         E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     if input("Analyze stuffs? y/[n]") == 'y':
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 50})
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
         analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 100})
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(Pz_contracted, K_Qparam, analysis_dict, controller_name='Qparam')
 
         # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
@@ -575,13 +674,16 @@ def main():
         # Pz_open = plantMdelta(E_gain=1, sys_type='33_mult_unt', N_in=2, N_out=2)
         # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
+    K_ = {
+        'ad_light': co.c2d(co.tf([1], [2.5, 12, 0]), Ts),
+        'ad_heavy': co.c2d(co.tf([1], [6, 18, 0]), Ts)
+    }
+
     if input("Analyze Admittance controller") == 'y':
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 50})
+        analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 18, 'k': 0, 'k_E': 50}
         analysis(Pz_design, K_['ad_light'], analysis_dict, controller_name="ad_light")
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 3, 'b': 12, 'k': 0, 'k_E': 100})
+        analysis_dict['virtual_sys'] = {'m': 3, 'b': 21, 'k': 0, 'k_E': 100}
         analysis(Pz_contracted, K_['ad_light'], analysis_dict, controller_name="ad_light")
-        analysis_dict['recipe'][3] = (1, 0, 'step_sim', {'m': 6, 'b': 18, 'k': 0, 'k_E': 50})
-        analysis(Pz_design, K_['ad_heavy'], analysis_dict, controller_name="ad_heavy")
 
     if input("Write controller? y/[n]") == 'y':
         print_controller("../config/Nov21_Cart_synthesis_Qparam_synres.yaml", data['Qtaps'], data['zPyu'])
