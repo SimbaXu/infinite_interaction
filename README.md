@@ -35,6 +35,9 @@ Notes on running the actual system:
 
   #+END_SRC
 
+Cartesian control experiment
+
+roslaunch infinite_interaction admittance_controller.yaml
 
 # Requirements:
 
