@@ -603,7 +603,7 @@ def main():
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [5.25, 0.1], [25, 0.01], [100, 0.005]], preview=True)
+        [[0.1, 0.1], [25, 0.1], [25, 0.008], [100, 0.008]], preview=True)
 
     desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
 
@@ -618,7 +618,7 @@ def main():
         'resp_delay': 1,  # number of delayed time step
 
         # different objective
-        'objective': ['step_int', (0, 2), desired_sys, 7e-1],
+        'objective': ['step_int', (0, 2), desired_sys, 1.5],
 
         # 'objective2': ['inf', (0, 2), co.c2d(co.tf([50, 0], [2.5, 21, 0 + 50]), Ts)]
         # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3.5, 21, 0 + 50]), Ts)],
@@ -666,7 +666,7 @@ def main():
         'row_col': (3, 2),
         'freqs': np.logspace(-2, np.log10(np.pi / Ts), 200),
         'sharex': ([(0, 1), (1, 1)], [(0, 0), (1, 0)]),
-        'virtual_sys': {'m': 2, 'b': 8, 'k': 0, 'k_E': 50},
+        'virtual_sys': {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50},
         'recipe': [
             (0, 0, 'impulse', (0, 2)),
             (2, 0, 'step_int', (0, 2)),
