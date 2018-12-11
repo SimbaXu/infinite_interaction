@@ -25,12 +25,13 @@ Notes on running the actual system:
     # robot driver and joint position control interface
     roslaunch denso_control rc8_ros_driver.launch rate:=125 ip:=192.168.0.21
     roslaunch denso_control joint_position_controllers.launch
+
     # ftsensor driver and ros interface
     roslaunch netft_control netft_ros_driver.launch ip:=192.168.0.22
     roslaunch netft_control ros_controllers.launch
 
-     # launch netft via a node
-	 roslaunch infinite_interaction load_netft.launch
+    # or, instead of the above step: launch netft via a node
+	roslaunch infinite_interaction load_netft.launch
 
   #+END_SRC
 
