@@ -603,7 +603,7 @@ def main():
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [25, 0.1], [25, 0.008], [100, 0.008]], preview=True)
+        [[0.1, 0.1], [25, 0.1], [25, 0.008], [50, 0.006], [200, 0.004]], preview=True)
 
     desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
 
@@ -661,6 +661,12 @@ def main():
 
     if input("Design controller?") == 'y':
         K_Qparam, data = Q_synthesis(Pz_design, design_dict)
+
+    if input("Write controller? y/[n]") == 'y':
+        print_controller(
+            "../config/Nov21_Cart_synthesis_Qparam_synres.yaml",
+            data['Qtaps'],
+            data['zPyu'])
 
     analysis_dict = {
         'row_col': (3, 2),
