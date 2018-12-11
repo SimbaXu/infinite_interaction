@@ -29,7 +29,7 @@ Notes on running the actual system:
     roslaunch netft_control netft_ros_driver.launch ip:=192.168.0.22
     roslaunch netft_control ros_controllers.launch
 
-     # launch netft via a node
+     # launch netft via as a node
 	 roslaunch infinite_interaction load_netft.launch
 
   #+END_SRC
