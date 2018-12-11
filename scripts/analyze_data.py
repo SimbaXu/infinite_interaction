@@ -150,7 +150,8 @@ def search_idx(idx_str, keys):
                 return i
     return None
 
-def analysis_view(extracted_data, cmd_string, keys):
+
+def analysis_view(extracted_data, cmd_string, keys, zeroing=True, grid=True):
     """ View and analyze extracted data.
 
     Args:
@@ -220,8 +221,12 @@ def analysis_view(extracted_data, cmd_string, keys):
     # plot
     figure, ax = plt.subplots(1, 1)
     for x, y, label in to_plot:
+        if zeroing:
+            y = y - y[0]
         ax.plot(x, y, label=label)
     plt.legend()
+    if grid:
+        plt.grid()
     plt.show()
 
 
