@@ -366,8 +366,7 @@ class Qsyn:
             ydata = interpolate_func(xdata)
             plt.plot(xdata, ydata)
             plt.scatter(x, y)
-            plt.xscale('log')
-            plt.yscale('log')
+            plt.xlim([0, 300])
             plt.show()
 
         return interpolate_func
@@ -603,7 +602,7 @@ def main():
         E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [25, 0.1], [25, 0.008], [50, 0.006], [200, 0.004]], preview=True)
+        [[0.1, 0.1], [25, 0.1], [25, 0.015], [50, 0.006], [200, 0.004]], preview=True)
 
     desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
 
