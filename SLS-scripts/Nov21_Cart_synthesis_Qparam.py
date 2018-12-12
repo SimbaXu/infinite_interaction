@@ -34,7 +34,7 @@ def plant(gain_E=20, m_int=0.1):
 
 
 def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
-                N_in=1, N_out=1):
+                N_in=1, N_out=1, tau_R1=0.0437):
     """ Plant Model with multiplicative uncertainty.
 
     Diagram is drawn in page 4, notebook.
@@ -57,7 +57,7 @@ def plantMdelta(E_gain=20, m_int=0.1, wI=0.9995, sys_type='22_mult_unt',
     E_gain = - abs(E_gain)
 
     # basic blocks
-    R1 = co.c2d(s / (1 + 0.0437 * s), Ts)
+    R1 = co.c2d(s / (1 + tau_R1 * s), Ts)
     sumz = co.c2d(1 / s, Ts)  # discrete-time integrator
     E = E_gain * sumz  # exo agent
     R2 = - m_int / Ts ** 2 * (1 - z ** (-1)) ** 2  # internally induced
@@ -408,10 +408,27 @@ def Q_synthesis(Pz_design, specs):
         out_1 = np.cumsum(out[1], axis=1) * Ts
         out = (0, out_1)  # TODO: bad hack, improve this
     imp_desired = out[1][0, :]
-    imp_desired[specs['resp_delay']
-        :] = imp_desired[:specs['Nsteps'] - specs['resp_delay']]
+    imp_desired[specs['resp_delay']:] = (imp_desired[:specs['Nsteps'] - specs['resp_delay']])
     imp_desired[:specs['resp_delay']] = 0
     cost1 = obj_weight * cvx.norm(imp_var - imp_desired)
+
+    # objective: time-domain quadratic regulator
+    if 'objective-qreg' in specs:
+        input_kind, io_idx, target, obj_weight = specs['objective-qreg']
+        imp_var = Qsyn.obtain_time_response_var(
+            weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
+        if input_kind == 'step':
+            out = co.step_response(sys_desired, T_sim)
+        elif input_kind == 'impulse':
+            out = co.impulse_response(sys_desired, T_sim)
+        elif input_kind == 'step_int':
+            out = co.step_response(sys_desired, T_sim)
+            out_1 = np.cumsum(out[1], axis=1) * Ts
+            out = (0, out_1)  # TODO: bad hack, improve this
+        cost1 += obj_weight * cvx.norm(imp_var - target)
+
+        # no overshoot constraint
+        constraints.append(imp_var <= target)
 
     # frequency-domain constraints
     freq_vars = {}
@@ -424,14 +441,14 @@ def Q_synthesis(Pz_design, specs):
 
     # min H-infinity norm
     cost_inf = 0
-    for io_idx, func in specs['freq-bound-min']:
+    for io_idx, func, obj_weight in specs['objective-Hinf']:
         if io_idx in freq_vars:
             freq_var = freq_vars[io_idx]
         else:
             freq_var = Qsyn.obtain_freq_var(
                 weight, io_idx, freqs, Pzw, Pzu, Pyw)
             freq_vars[io_idx] = freq_var
-        cost_inf += cvx.norm(freq_var - func(freqs), 'inf')
+        cost_inf += obj_weight * cvx.norm(freq_var - func(freqs), 'inf')
 
     # passivity
     for io_idx, wc in specs['passivity']:
@@ -599,10 +616,10 @@ def main():
 
     # desired response from w3 to z1
     Pz_design = plantMdelta(
-        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [25, 0.1], [25, 0.015], [50, 0.006], [200, 0.004]], preview=True)
+        [[0.1, 0.1], [25, 0.1], [25, 0.015], [50, 0.004], [200, 0.002]], preview=True)
 
     desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
 
@@ -614,10 +631,17 @@ def main():
         'Nsteps': 1000,
         # 'freqs': np.logspace(-2, np.log10(np.pi / Ts), 1000),
         'freqs': np.linspace(1e-2, np.pi / Ts, 1000),
-        'resp_delay': 1,  # number of delayed time step
+        'resp_delay': 3,  # number of delayed time step
 
         # different objective
         'objective': ['step_int', (0, 2), desired_sys, 1.5],
+        'objective-Hinf': [
+            [(0, 2), desired_sys_up, 1.0]
+        ],
+
+        # a quadratic regulator objective:
+        # (input_kind, input indices, target level, objective weight)
+        # 'objective-qreg': ['step_int', (0, 2), 1.0, 1.0],
 
         # 'objective2': ['inf', (0, 2), co.c2d(co.tf([50, 0], [2.5, 21, 0 + 50]), Ts)]
         # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3.5, 21, 0 + 50]), Ts)],
@@ -632,7 +656,7 @@ def main():
         # cost different paramerter
 
         # regulation parameter
-        'reg': 1e-2,
+        'reg': 0e-2,
         'reg_diff_Q': 1e-2,
         'reg_diff_Y': 1,
 
@@ -643,13 +667,9 @@ def main():
             [(0, 0), noise_atten_func],
         ],
 
-        'freq-bound-min': [
-            [(0, 2), desired_sys_up]
-        ],
-
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
-            [(0, 0), 30]
+            [(0, 0), 26]
         ],
 
         # DC gain
@@ -685,9 +705,9 @@ def main():
     }
 
     Pz_contracted = plantMdelta(
-        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
     Pz_relaxed = plantMdelta(
-        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
 
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
@@ -700,12 +720,6 @@ def main():
             controller_name='Qparam')
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
         analysis(Pz_relaxed, K_Qparam, analysis_dict, controller_name='Qparam')
-
-        # Pz_contract = plantMdelta(E_gain=100, N_in=2, N_out=2, sys_type='33_mult_unt')
-        # analysis(Pz_contract, K_Qparam, m=4, b=12, k=0, controller_name='contacting (high stiffness)')
-
-        # Pz_open = plantMdelta(E_gain=1, sys_type='33_mult_unt', N_in=2, N_out=2)
-        # analysis(Pz_open, K_Qparam, m=4, b=12, k=0, controller_name='open (low stiffness)')
 
     K_ = {
         'ad_light': co.c2d(co.tf([1], [2.5, 12, 0]), Ts),

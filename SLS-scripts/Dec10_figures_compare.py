@@ -6,6 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 
+# 
+COLOR_idl = 'C0'
+COLOR_ad = 'C1'
+COLOR_Q = 'C2'
+COLOR_bnd = 'gray'
+
 
 def load_Qparam_controller(name):
     with open(name, 'rb') as f:
@@ -20,11 +26,11 @@ def sim_step(sys, T_sim):
 
 def fig_admittance_shaping():
     Pz_nom = plantMdelta(
-        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
     Pz_contracted = plantMdelta(
-        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
     Pz_relaxed = plantMdelta(
-        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=1)
+        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
 
     m_des = 2.5
     b_des = 12
@@ -56,23 +62,23 @@ def fig_admittance_shaping():
     y0 = sim_step(H_relaxed_ideal, T_sim)
     y1 = sim_step(H_nom_ideal, T_sim)
     y2 = sim_step(H_contracted_ideal, T_sim)
-    ax0.plot(T_sim, y0, label='idl.', linestyle='-')
-    ax1.plot(T_sim, y1, label='idl.', linestyle='-')
-    ax2.plot(T_sim, y2, label='idl.', linestyle='-')
+    ax0.plot(T_sim, y0, label='idl.', linestyle='-', color=COLOR_idl)
+    ax1.plot(T_sim, y1, label='idl.', linestyle='-', color=COLOR_idl)
+    ax2.plot(T_sim, y2, label='idl.', linestyle='-', color=COLOR_idl)
 
     y0 = sim_step(H_relaxed_ad[0, 2], T_sim)
     y1 = sim_step(H_nom_ad[0, 2], T_sim)
     y2 = sim_step(H_contracted_ad[0, 2], T_sim)
-    ax0.plot(T_sim, y0, label='ad', linestyle='--')
-    ax1.plot(T_sim, y1, label='ad', linestyle='--')
-    ax2.plot(T_sim, y2, label='ad', linestyle='--')
+    ax0.plot(T_sim, y0, label='ad', linestyle='--', color=COLOR_ad)
+    ax1.plot(T_sim, y1, label='ad', linestyle='--', color=COLOR_ad)
+    ax2.plot(T_sim, y2, label='ad', linestyle='--', color=COLOR_ad)
 
     y0 = sim_step(H_relaxed_Q[0, 2], T_sim)
     y1 = sim_step(H_nom_Q[0, 2], T_sim)
     y2 = sim_step(H_contracted_Q[0, 2], T_sim)
-    ax0.plot(T_sim, y0, label='Q', linestyle='-.')
-    ax1.plot(T_sim, y1, label='Q', linestyle='-.')
-    ax2.plot(T_sim, y2, label='Q', linestyle='-.')
+    ax0.plot(T_sim, y0, label='Q', linestyle='-.', color=COLOR_Q)
+    ax1.plot(T_sim, y1, label='Q', linestyle='-.', color=COLOR_Q)
+    ax2.plot(T_sim, y2, label='Q', linestyle='-.', color=COLOR_Q)
 
     # # ax0.legend(ncol=3, loc='best', framealpha=1)
     # for ax in [ax0, ax1, ax2]:
@@ -184,27 +190,27 @@ def fig_noise_attenuation():
     mag0, phase0, _ = H_relaxed_ad[0, 0].freqresp(freqs)
     mag1, phase1, _ = H_nom_ad[0, 0].freqresp(freqs)
     mag2, phase2, _ = H_contracted_ad[0, 0].freqresp(freqs)
-    ax0.plot(freqs, mag0[0, 0], label='ad.', linestyle='--')
-    ax1.plot(freqs, mag1[0, 0], label='ad.', linestyle='--')
-    ax2.plot(freqs, mag2[0, 0], label='ad.', linestyle='--')
-    ax3.plot(freqs, phase0[0, 0], label='ad.', linestyle='--')
-    ax4.plot(freqs, phase1[0, 0], label='ad.', linestyle='--')
-    ax5.plot(freqs, phase2[0, 0], label='ad.', linestyle='--')
+    ax0.plot(freqs, mag0[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
+    ax1.plot(freqs, mag1[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
+    ax2.plot(freqs, mag2[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
+    ax3.plot(freqs, phase0[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
+    ax4.plot(freqs, phase1[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
+    ax5.plot(freqs, phase2[0, 0], label='ad.', linestyle='--', c=COLOR_ad)
 
     mag0, phase0, _ = H_relaxed_Q[0, 0].freqresp(freqs)
     mag1, phase1, _ = H_nom_Q[0, 0].freqresp(freqs)
     mag2, phase2, _ = H_contracted_Q[0, 0].freqresp(freqs)
-    ax0.plot(freqs, mag0[0, 0], label='Q', linestyle='-.')
-    ax1.plot(freqs, mag1[0, 0], label='Q', linestyle='-.')
-    ax2.plot(freqs, mag2[0, 0], label='Q', linestyle='-.')
-    ax3.plot(freqs, phase0[0, 0], label='Q', linestyle='-.')
-    ax4.plot(freqs, phase1[0, 0], label='Q', linestyle='-.')
-    ax5.plot(freqs, phase2[0, 0], label='Q', linestyle='-.')
+    ax0.plot(freqs, mag0[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
+    ax1.plot(freqs, mag1[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
+    ax2.plot(freqs, mag2[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
+    ax3.plot(freqs, phase0[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
+    ax4.plot(freqs, phase1[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
+    ax5.plot(freqs, phase2[0, 0], label='Q', linestyle='-.', c=COLOR_Q)
 
     mag3 = noise_atten_func(freqs)
-    ax0.plot(freqs, mag3, label='bnd.', linestyle='-')
-    ax1.plot(freqs, mag3, label='bnd.', linestyle='-')
-    ax2.plot(freqs, mag3, label='bnd.', linestyle='-')
+    ax0.plot(freqs, mag3, label='bnd.', linestyle='-', c=COLOR_bnd)
+    ax1.plot(freqs, mag3, label='bnd.', linestyle='-', c=COLOR_bnd)
+    ax2.plot(freqs, mag3, label='bnd.', linestyle='-', c=COLOR_bnd)
 
     # post-process
     for ax in [ax0, ax1, ax2]:
