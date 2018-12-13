@@ -124,7 +124,7 @@ int main(int argc, char **argv)
     }
     // position controller and command
     JointPositionController position_act(name_space, node_handle);
-    dVector initial_jnt_position = position_handler.get_latest_jnt_position();
+    dVector initial_jnt_position = position_handler.get_latest_jnt();
     ROS_INFO_STREAM("Initial position: " << initial_jnt_position[0] << ", " << initial_jnt_position[1] << ", "
                                          << initial_jnt_position[2] << ", " << initial_jnt_position[3] << ", "
                                          << initial_jnt_position[4] << ", " << initial_jnt_position[5]);
@@ -164,14 +164,14 @@ int main(int argc, char **argv)
 
         // move the robot to the reference position in [reach_duration] second
         ros::spinOnce();
-        dVector position_init = position_handler.get_latest_jnt_position();
+        dVector position_init = position_handler.get_latest_jnt();
         ROS_INFO_STREAM("Starting experiment. Moving to reference position!. Will take " << reach_duration << " seconds.");
         for (int j = 0; j < (reach_duration * cmd_rate + 1); ++j) {
             double alpha = (double)(j) / (reach_duration * cmd_rate);
             for (int i = 0; i < 6; ++i) {
                 jnt_pos_cmd[i] = position_init[i] * (1 - alpha) + jnt_pos_ref[i] * alpha;
             }
-            position_act.set_joint_positions(jnt_pos_cmd);
+            position_act.send_jnt_command(jnt_pos_cmd);
             rate.sleep();
         }
 
@@ -190,7 +190,7 @@ int main(int argc, char **argv)
             OpenRAVE::RaveVector<double> rave_torque(torque[0], torque[1], torque[2]);
 
             // project to joint torque space
-            robot->SetActiveDOFValues(position_handler.get_latest_jnt_position());
+            robot->SetActiveDOFValues(position_handler.get_latest_jnt());
             manip->CalculateJacobian(jacobian);
             manip->CalculateAngularVelocityJacobian(jacobian_rot);
             T_wee = manip->GetEndEffectorTransform();
@@ -208,7 +208,7 @@ int main(int argc, char **argv)
             jnt_pos_cmd[jnt_idx] = jnt_pos_ref[jnt_idx] + jnt_pos_i[n++];
 
             // send command
-            position_act.set_joint_positions(jnt_pos_cmd);
+            position_act.send_jnt_command(jnt_pos_cmd);
             torque_pub.publish_joint_torques(tau_prj);
 
             // record time required

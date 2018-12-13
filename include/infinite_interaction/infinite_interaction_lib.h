@@ -370,32 +370,41 @@ public:
     void set_wrench_offset(dVector wrench_offset_);
     void log_latest_wrench(const std_msgs::Header &);
 };
+
+
+
 class JointPositionHandler{
     std::vector<double> joint_position;
 public:
     JointPositionHandler();
     void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
-    dVector get_latest_jnt_position();
+    dVector get_latest_jnt();
     bool received_msg();
 };
 
 
 
-/*! A controller used for controlling the robot joint position.
+/*! Robot handler.
  *
- * */
+ *  This class sends joint position commands, and receives the current joint positions.
+ *  Retrieving and sending are accessible via member functions.
+ */
 class JointPositionController {
 public:
     /*! Constructor for a joint position controller class.
      */
     explicit JointPositionController(std::string name_space, ros::NodeHandle& nh);
-    void set_joint_positions(std::vector<double>& jnt_positions);
+    void send_jnt_command(std::vector<double> &jnt_positions);
+    void get_latest_jnt(std::vector<double> &jnt_positions);
+    std::vector<double> get_latest_jnt();
+    void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
+    bool received_msg();
 
 private:
     std::string _name_space;
     std::vector<ros::Publisher> _jnt_pubs;
     ros::NodeHandle _nh;
-
+    std::vector<double> _joint_position;
 };
 
 class ExternalTorquePublisher {
