@@ -71,13 +71,7 @@ int main(int argc, char **argv)
     // Robot Controller
     std::shared_ptr<AbstractRobotController> robot_handler;
     robot_handler = std::make_shared<JointPositionController> (name_space, node_handle);
-    // ros::Subscriber jnt_pos_subscriber = node_handle.subscribe(jnt_state_topic, 3, &JointPositionController::signal_callback, &robot_handler);
-    // ros::Duration(0.5).sleep(); ros::spinOnce(); // wait for a few second before updating the current joint position
 
-    // if (!robot_handler.received_msg()){
-    //     ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
-    //     ros::shutdown();
-    // }
     dVector jnt_init = robot_handler->get_latest_jnt();
     ROS_INFO_STREAM("Initial position: " << jnt_init[0] << ", " << jnt_init[1] << ", "
                                          << jnt_init[2] << ", " << jnt_init[3] << ", "
