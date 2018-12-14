@@ -68,15 +68,18 @@ int main(int argc, char **argv)
     node_handle.param("viewer", viewer, true);
     node_handle.param("debug", debug, false);
 
-    // Denso joint commanding interface
-    JointPositionController robot_handler(name_space, node_handle);
-    ros::Subscriber jnt_pos_subscriber = node_handle.subscribe(jnt_state_topic, 3, &JointPositionController::signal_callback, &robot_handler);
-    ros::Duration(0.5).sleep(); ros::spinOnce(); // wait for a few second before updating the current joint position
-    if (!robot_handler.received_msg()){
-        ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
-        ros::shutdown();
-    }
-    dVector jnt_init = robot_handler.get_latest_jnt();
+    // Robot Controller
+    std::shared_ptr<AbstractRobotController> jnt_pos_handler;
+    jnt_pos_handler = std::make_shared<JointPositionController> (name_space, node_handle);
+    // ros::Subscriber jnt_pos_subscriber = node_handle.subscribe(jnt_state_topic, 3, &JointPositionController::signal_callback, &jnt_pos_handler);
+    // ros::Duration(0.5).sleep(); ros::spinOnce(); // wait for a few second before updating the current joint position
+
+    // if (!jnt_pos_handler.received_msg()){
+    //     ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
+    //     ros::shutdown();
+    // }
+
+    dVector jnt_init = jnt_pos_handler.get_latest_jnt();
     ROS_INFO_STREAM("Initial position: " << jnt_init[0] << ", " << jnt_init[1] << ", "
                                          << jnt_init[2] << ", " << jnt_init[3] << ", "
                                          << jnt_init[4] << ", " << jnt_init[5]);
@@ -103,9 +106,11 @@ int main(int argc, char **argv)
     robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
     auto manip_ptr = robot_ptr->GetActiveManipulator();
 
-    // Interaction controller selection: depending on the loaded parameter, difference "blocks" will
-    // be initialized. This is where most of the work should be done: creating custom classes for the
-    // task at hand and initializing them. The control loop is actually trivial.
+    // Interaction controller selection: depending on the loaded
+    // parameter, difference "blocks" will be initialized. This is
+    // where most of the work should be done: creating custom classes
+    // for the task at hand and initializing them. The control loop is
+    // very simple.
     std::string controller_id, controller_type;
     if (!node_handle.getParam("/active_controller", controller_id)){
         ROS_ERROR_STREAM("No active controller found. Check if parameters have been loaded to parameter sever!");
