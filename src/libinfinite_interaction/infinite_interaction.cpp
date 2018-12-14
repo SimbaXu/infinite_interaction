@@ -108,7 +108,7 @@ FTSensorHandle::FTSensorHandle(const dVector &wrench_offset_input, dVector b_in,
 FTSensorHandle::FTSensorHandle(ros::NodeHandle & nh, std::string ft_topic): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)
 {
     // susbscribe to the FT topic to obtain data
-    ros::Subscriber ft_subscriber = nh.subscribe(ft_topic, 3, &FTSensorHandle::signal_callback, this);
+    ft_subscriber = nh.subscribe(ft_topic, 3, &FTSensorHandle::signal_callback, this);
     wrench_offset.resize(6);
     b = {1};
     a = {1};
@@ -139,8 +139,6 @@ void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
         wrench_offset[i] = wrench_offset_[i];
     }
 }
-
-
 
 
 ExternalTorquePublisher::ExternalTorquePublisher(std::string name_space, ros::NodeHandle &nh): _name_space(name_space), _nh(nh)  {
@@ -199,11 +197,17 @@ JointPositionController::JointPositionController(std::string name_space, ros::No
     }
 
     // subscription to joint states topic
-    ros::Subscriber _jnt_pos_subscriber = nh.subscribe("/" + _name_space + "/joint_states", 3, &JointPositionController::signal_callback, this);
+    _jnt_pos_subscriber = nh.subscribe("/" + _name_space + "/joint_states", 3, &JointPositionController::signal_callback, this);
     ros::Duration(0.5).sleep(); ros::spinOnce(); // wait a little before updating the current joint position
-    if (received_msg()){
+    if (!received_msg()){
         ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
         ros::shutdown();
+    }
+    else{
+      ROS_INFO("[JointPositionController] Receive joint position");
+      ROS_DEBUG_STREAM("jnt: " << _joint_position[0] << _joint_position[1]
+		       << _joint_position[2] << _joint_position[3]
+		       << _joint_position[4] << _joint_position[5]);
     }
 }
 

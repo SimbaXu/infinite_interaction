@@ -359,6 +359,7 @@ class FTSensorHandle {
     dVector b, a; /*!filter coefficients*/
     bool debug = false;
     ros::Publisher wrench_pub_debug;  // publisher for debugging
+    ros::Subscriber ft_subscriber;
 public:
 
     /*! Basic initialization. All internal data members are initialized to the default values.
