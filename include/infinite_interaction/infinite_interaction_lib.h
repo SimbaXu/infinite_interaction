@@ -426,6 +426,7 @@ private:
     std::vector<ros::Publisher> _jnt_pubs;
     ros::NodeHandle _nh;
     std::vector<double> _joint_position;
+    ros::Subscriber _jnt_pos_subscriber;
 };
 
 class ExternalTorquePublisher {

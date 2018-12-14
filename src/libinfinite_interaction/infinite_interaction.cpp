@@ -187,6 +187,7 @@ bool JointPositionHandler::received_msg() {
 
 
 JointPositionController::JointPositionController(std::string name_space, ros::NodeHandle &nh) : _name_space(name_space), _nh(nh) {
+    // connection to joint commands topic
     for (int i=0; i < 6; i++){
         std::string jnt_topic = "/" + _name_space + "/j" + std::to_string(i + 1) + "/command";
         ros::Publisher jnt_pub = _nh.advertise<std_msgs::Float64>(jnt_topic, 5);
@@ -195,6 +196,14 @@ JointPositionController::JointPositionController(std::string name_space, ros::No
     _joint_position.resize(6);
     for (int i = 0; i < 6; ++i) {
         _joint_position[i] = -999; // coded, should changed if have received message
+    }
+
+    // subscription to joint states topic
+    ros::Subscriber _jnt_pos_subscriber = nh.subscribe("/" + _name_space + "/joint_states", 3, &JointPositionController::signal_callback, this);
+    ros::Duration(0.5).sleep(); ros::spinOnce(); // wait a little before updating the current joint position
+    if (received_msg()){
+        ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
+        ros::shutdown();
     }
 }
 
