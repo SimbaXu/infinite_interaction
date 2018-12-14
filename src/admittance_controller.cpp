@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     ros::NodeHandle node_handle("~");
 
     // load parameters from ROS parameter server
-    std::string name_space = "denso";
+    std::string robot_ns = "denso";
     std::string ft_topic = "/netft/raw";
     std::string jnt_state_topic = "/denso/joint_states";
     std::string viewername = "qtosg";
@@ -69,14 +69,9 @@ int main(int argc, char **argv)
     node_handle.param("debug", debug, false);
 
     // Robot Controller
-    std::shared_ptr<AbstractRobotController> robot_handler;
-    robot_handler = std::make_shared<JointPositionController> (name_space, node_handle);
-
-    dVector jnt_init = robot_handler->get_latest_jnt();
-    ROS_INFO_STREAM("Initial position: " << jnt_init[0] << ", " << jnt_init[1] << ", "
-                                         << jnt_init[2] << ", " << jnt_init[3] << ", "
-                                         << jnt_init[4] << ", " << jnt_init[5]);
-
+    std::shared_ptr<AbstractRobotController> robot_handle;
+    robot_handle = std::make_shared<JointPositionController> (robot_ns, node_handle);
+    dVector jnt_init = robot_handle->get_latest_jnt();
 
     // debugger which publishes data to topics
     std::string debug_ns = "/debugger";
@@ -92,11 +87,10 @@ int main(int argc, char **argv)
     OpenRAVE::RaveInitialize(true); // start openrave core
     OpenRAVE::EnvironmentBasePtr env_ptr = OpenRAVE::RaveCreateEnvironment(); // create the main environment
     OpenRAVE::RaveSetDebugLevel(OpenRAVE::Level_Info);
-    if (viewer) boost::thread thviewer(boost::bind(SetViewer,env_ptr,viewername));  // create viewer
+    if (viewer) boost::thread thviewer(boost::bind(SetViewer, env_ptr, viewername));  // create viewer
     env_ptr->Load(scenefilename); // load the scene
     OpenRAVE::RobotBasePtr robot_ptr;
     robot_ptr = env_ptr->GetRobot(robot_name);
-    robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
     auto manip_ptr = robot_ptr->GetActiveManipulator();
 
     // Interaction controller selection: depending on the loaded
@@ -139,10 +133,10 @@ int main(int argc, char **argv)
         }
         ft_handle.set_wrench_offset(wrench_offset);
 
-        // reference position: the zero joint position
-        std::vector<double> jnt_pos_ref;
-        node_handle.getParam("/" + controller_id + "/joint_pos_ref", jnt_pos_ref);
-        if (jnt_pos_ref.size() != 6){
+        // reference position: the zero joint position. Required for this type of controller.
+        std::vector<double> jnt_ref;
+        node_handle.getParam("/" + controller_id + "/joint_pos_ref", jnt_ref);
+        if (jnt_ref.size() != 6){
             ROS_ERROR_STREAM("Reference position from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
             ros::shutdown();
         }
@@ -161,7 +155,7 @@ int main(int argc, char **argv)
                     ros::shutdown();
                 }
                 node_handle.getParam(jnt_filter_path + "/a", cof_a);
-                jnt_controllers.push_back(std::make_shared<DiscreteTimeFilter>(cof_b, cof_a, jnt_init[i] - jnt_pos_ref[i]));
+                jnt_controllers.push_back(std::make_shared<DiscreteTimeFilter>(cof_b, cof_a, jnt_init[i] - jnt_ref[i]));
             }
             else if (jnt_filter_type == "fir_siso") {
                 int T, nu, ny;
@@ -174,7 +168,7 @@ int main(int argc, char **argv)
                 node_handle.getParam(jnt_filter_path + "/ny", ny);
                 node_handle.getParam(jnt_filter_path + "/L", L);
                 node_handle.getParam(jnt_filter_path + "/MB2", MB2);
-                jnt_controllers.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, dVector{jnt_init[i] - jnt_pos_ref[i]}));
+                jnt_controllers.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, dVector{jnt_init[i] - jnt_ref[i]}));
             }
             else {
                 throw std::invalid_argument("Unknown filter kind");
@@ -182,14 +176,14 @@ int main(int argc, char **argv)
         }
         controller_ptr = std::make_shared<InfInteraction::ControllerCollection>(jnt_controllers);
         // inverse kinematic: simply add the reference joint position to each position output to obtain the joint command.
-        position_map_ptr = std::make_shared<InfInteraction::SimpleOffset>(jnt_pos_ref);
+        position_map_ptr = std::make_shared<InfInteraction::SimpleOffset>(jnt_ref);
     }
     else if (controller_type == "cartesian_3D_admittance"){
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
-        dVector wrench_offset_;
-        ft_handle.get_latest_wrench(wrench_offset_);
-        ft_handle.set_wrench_offset(wrench_offset_);
+        dVector wrench_offset;
+        ft_handle.get_latest_wrench(wrench_offset);
+        ft_handle.set_wrench_offset(wrench_offset);
         // from external wrench to joint torque
         robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
@@ -220,9 +214,9 @@ int main(int argc, char **argv)
      else if (controller_type == "cartesian_3D_admittance_Qparam"){
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
-        dVector wrench_offset_;
-        ft_handle.get_latest_wrench(wrench_offset_);
-        ft_handle.set_wrench_offset(wrench_offset_);
+        dVector wrench_offset;
+        ft_handle.get_latest_wrench(wrench_offset);
+        ft_handle.set_wrench_offset(wrench_offset);
         // from external wrench_n to joint torque
         robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
@@ -276,10 +270,10 @@ int main(int argc, char **argv)
         ros::shutdown();
     }
 
-    // temp variable
-    std::vector<double> jnt_cmd = {0, 0, 0, 0, 0, 0}, jnt_n;
+    // loop variable
+    std::vector<double> jnt_cmd = {0, 0, 0, 0, 0, 0}, jnt_n(6);
     std::vector<double> wrench_n = {0, 0, 0, 0, 0, 0}, y_n, u_n;
-    int step_idx = 0;
+    int cy_idx = 0;  // cycle index
     // Control loop
     while(!ros::isShuttingDown()){
         auto tstart = ros::Time::now();
@@ -289,7 +283,7 @@ int main(int argc, char **argv)
 
         // collect current wrench and joint position
         ft_handle.get_latest_wrench(wrench_n);
-        jnt_n = robot_handler->get_latest_jnt();
+        jnt_n = robot_handle->get_latest_jnt();
 
         // wrench transform: convert measured wrench to control output (Cartesian force)
         force_map_ptr->set_state(jnt_n);
@@ -303,7 +297,7 @@ int main(int argc, char **argv)
         jnt_cmd = position_map_ptr->compute(u_n);
 
         // send joint position command
-        robot_handler-> send_jnt_command(jnt_cmd);
+        robot_handle-> send_jnt_command(jnt_cmd);
 
         // publish debug information
         if (debug) {
@@ -322,7 +316,7 @@ int main(int argc, char **argv)
             ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
         }
 
-        step_idx = (step_idx + 1) % 2147483640;
+        cy_idx = (cy_idx + 1) % 2147483640;
         rate.sleep();
     }
 

@@ -75,7 +75,8 @@ void FTSensorHandle::get_latest_wrench(std::vector<double> &wrench) {
 }
 
 FTSensorHandle::FTSensorHandle(const std::vector<double> &wrench_offset_input) :  fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
-    // fx is initialized with a special constant, which is checked to make sure that the handler has received wrench reading.
+    // fx is initialized with a special constant, which is checked to make sure
+    // that the handler has received some wrench measurements.
     wrench_offset.resize(6);
     b = {1};
     a = {1};
