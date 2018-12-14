@@ -360,7 +360,19 @@ class FTSensorHandle {
     bool debug = false;
     ros::Publisher wrench_pub_debug;  // publisher for debugging
 public:
-    FTSensorHandle();;
+
+    /*! Basic initialization. All internal data members are initialized to the default values.
+     *
+     * No ft_sensor topic is attached.
+     */
+    FTSensorHandle();
+
+    /*! Basic initialization.
+     *
+     * All internal data members are initialized to the default values. This class listens to signal
+     * from topic `ft_topic` and update its internal data members (fx, fy, fz, tx, ty, tz) respectively.
+     */
+    FTSensorHandle(ros::NodeHandle & nh, std::string ft_topic);
     explicit FTSensorHandle(const dVector &wrench_offset_input);; // with non-zero offset values
     FTSensorHandle(const dVector &wrench_offset_input, dVector b_in, dVector a_in); // with offset and low-pass filter
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);

@@ -105,6 +105,19 @@ FTSensorHandle::FTSensorHandle(const dVector &wrench_offset_input, dVector b_in,
     }
 }
 
+FTSensorHandle::FTSensorHandle(ros::NodeHandle & nh, std::string ft_topic): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)
+{
+    // susbscribe to the FT topic to obtain data
+    ros::Subscriber ft_subscriber = nh.subscribe(ft_topic, 3, &FTSensorHandle::signal_callback, this);
+    wrench_offset.resize(6);
+    b = {1};
+    a = {1};
+    for (int i = 0; i < 6; ++i) {
+        wrench_offset[i] = 0;
+        lp_filters.push_back(DiscreteTimeFilter(b, a, 0));
+    }
+}
+
 void FTSensorHandle::log_latest_wrench(const std_msgs::Header &header) {
     if (debug){
         geometry_msgs::WrenchStamped msg;
@@ -126,6 +139,8 @@ void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
         wrench_offset[i] = wrench_offset_[i];
     }
 }
+
+
 
 
 ExternalTorquePublisher::ExternalTorquePublisher(std::string name_space, ros::NodeHandle &nh): _name_space(name_space), _nh(nh)  {
