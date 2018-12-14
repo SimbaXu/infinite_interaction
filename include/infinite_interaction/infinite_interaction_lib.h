@@ -383,18 +383,27 @@ public:
 };
 
 
+class AbstractRobotController {
+ public:
+  virtual void send_jnt_command(std::vector<double> &jnt_cmds) = 0;
+  virtual void get_latest_jnt(std::vector<double> &jnt_positions) = 0;
+  virtual std::vector<double> get_latest_jnt() = 0;
+  virtual ~AbstractRobotController() {};
+};
 
-/*! Robot handler.
+/*! Joint Position Robot controller.
  *
- *  This class sends joint position commands, and receives the current joint positions.
- *  Retrieving and sending are accessible via member functions.
+ *  This class sends joint position commands through the topics
+ *  exposed by ros-control, and receives the current joint positions
+ *  by listening to joint state message. Retrieving and sending are
+ *  accessible via member functions.
  */
-class JointPositionController {
+class JointPositionController: public AbstractRobotController {
 public:
     /*! Constructor for a joint position controller class.
      */
     explicit JointPositionController(std::string name_space, ros::NodeHandle& nh);
-    void send_jnt_command(std::vector<double> &jnt_positions);
+    void send_jnt_command(std::vector<double> &jnt_cmds);
     void get_latest_jnt(std::vector<double> &jnt_positions);
     std::vector<double> get_latest_jnt();
     void signal_callback(const sensor_msgs::JointStateConstPtr &msg);

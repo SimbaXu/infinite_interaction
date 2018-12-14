@@ -37,7 +37,7 @@ Notes on running the actual system:
 
 Cartesian control experiment
 
-roslaunch infinite_interaction admittance_controller.yaml
+roslaunch infinite_interaction admittance_controller.launch
 
 # Requirements:
 
