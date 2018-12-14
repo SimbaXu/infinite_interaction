@@ -69,14 +69,14 @@ int main(int argc, char **argv)
     node_handle.param("debug", debug, false);
 
     // Denso joint commanding interface
-    JointPositionController jnt_pos_handler(name_space, node_handle);
-    ros::Subscriber jnt_pos_subscriber = node_handle.subscribe(jnt_state_topic, 3, &JointPositionController::signal_callback, &jnt_pos_handler);
+    JointPositionController robot_handler(name_space, node_handle);
+    ros::Subscriber jnt_pos_subscriber = node_handle.subscribe(jnt_state_topic, 3, &JointPositionController::signal_callback, &robot_handler);
     ros::Duration(0.5).sleep(); ros::spinOnce(); // wait for a few second before updating the current joint position
-    if (!jnt_pos_handler.received_msg()){
+    if (!robot_handler.received_msg()){
         ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
         ros::shutdown();
     }
-    dVector jnt_init = jnt_pos_handler.get_latest_jnt();
+    dVector jnt_init = robot_handler.get_latest_jnt();
     ROS_INFO_STREAM("Initial position: " << jnt_init[0] << ", " << jnt_init[1] << ", "
                                          << jnt_init[2] << ", " << jnt_init[3] << ", "
                                          << jnt_init[4] << ", " << jnt_init[5]);
@@ -117,10 +117,10 @@ int main(int argc, char **argv)
     }
 
     // FT sensor data acquisition setup via FTsensor handler
-    FTSensorHandler ft_handler;
-    ros::Subscriber ft_subscriber = node_handle.subscribe(ft_topic, 3, &FTSensorHandler::signal_callback, &ft_handler);
+    FTSensorHandle ft_handle;
+    ros::Subscriber ft_subscriber = node_handle.subscribe(ft_topic, 3, &FTSensorHandle::signal_callback, &ft_handle);
     if (debug){
-        ft_handler.set_debug(node_handle);
+        ft_handle.set_debug(node_handle);
     }
 
     // Initialize controlling blocks for the given task
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
             ROS_ERROR_STREAM("Reference wrench from param sever is invalid! Have you loaded the parameters? \n -- Exitting!");
 	    ros::shutdown();
         }
-        ft_handler.set_wrench_offset(wrench_offset);
+        ft_handle.set_wrench_offset(wrench_offset);
 
         // reference position: the zero joint position
         std::vector<double> jnt_pos_ref;
@@ -191,8 +191,8 @@ int main(int argc, char **argv)
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
         dVector wrench_offset_;
-        ft_handler.get_latest_wrench(wrench_offset_);
-        ft_handler.set_wrench_offset(wrench_offset_);
+        ft_handle.get_latest_wrench(wrench_offset_);
+        ft_handle.set_wrench_offset(wrench_offset_);
         // from external wrench to joint torque
         robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
@@ -224,8 +224,8 @@ int main(int argc, char **argv)
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
         dVector wrench_offset_;
-        ft_handler.get_latest_wrench(wrench_offset_);
-        ft_handler.set_wrench_offset(wrench_offset_);
+        ft_handle.get_latest_wrench(wrench_offset_);
+        ft_handle.set_wrench_offset(wrench_offset_);
         // from external wrench_n to joint torque
         robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
@@ -291,8 +291,8 @@ int main(int argc, char **argv)
         ros::spinOnce();
 
         // collect current wrench and joint position
-        ft_handler.get_latest_wrench(wrench_n);
-        jnt_n = jnt_pos_handler.get_latest_jnt();
+        ft_handle.get_latest_wrench(wrench_n);
+        jnt_n = robot_handler.get_latest_jnt();
 
         // wrench transform: convert measured wrench to control output (Cartesian force)
         force_map_ptr->set_state(jnt_n);
@@ -300,12 +300,13 @@ int main(int argc, char **argv)
 
         // control law: run control output through controller
         u_n = controller_ptr->compute(y_n);
+
         // inverse kinematics: map control displacement to actual joint command
         position_map_ptr->set_state(jnt_n);
         jnt_cmd = position_map_ptr->compute(u_n);
 
         // send joint position command
-        jnt_pos_handler.send_jnt_command(jnt_cmd);
+        robot_handler.send_jnt_command(jnt_cmd);
 
         // publish debug information
         if (debug) {

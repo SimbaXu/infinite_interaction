@@ -352,7 +352,7 @@ public:
  * filter them using DiscreteTimeFilter objects. Note that there are 6
  * individual filters, but all have the same coefficients.
  */
-class FTSensorHandler {
+class FTSensorHandle {
     double fx, fy, fz, tx, ty, tz;
     std::vector<double> wrench_offset;
     std::vector<DiscreteTimeFilter> lp_filters;
@@ -360,9 +360,9 @@ class FTSensorHandler {
     bool debug = false;
     ros::Publisher wrench_pub_debug;  // publisher for debugging
 public:
-    FTSensorHandler();;
-    explicit FTSensorHandler(const dVector &wrench_offset_input);; // with non-zero offset values
-    FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in); // with offset and low-pass filter
+    FTSensorHandle();;
+    explicit FTSensorHandle(const dVector &wrench_offset_input);; // with non-zero offset values
+    FTSensorHandle(const dVector &wrench_offset_input, dVector b_in, dVector a_in); // with offset and low-pass filter
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);
     void get_latest_wrench(dVector &force, dVector &torque);
     void get_latest_wrench(dVector &wrench);

@@ -33,13 +33,13 @@ void InfInteraction::TopicDebugger::publish_multiarray(int topic_id, const dVect
     }
 }
 
-void FTSensorHandler::set_debug(ros::NodeHandle &nh) {
+void FTSensorHandle::set_debug(ros::NodeHandle &nh) {
     debug=true;
     std::string topic_name = "debug/netft/filtered";
     wrench_pub_debug = nh.advertise<geometry_msgs::WrenchStamped>(topic_name, 5);
 }
 
-void FTSensorHandler::signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg) {
+void FTSensorHandle::signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg) {
     fx = lp_filters[0].compute(msg->wrench.force.x - wrench_offset[0]);
     fy = lp_filters[1].compute(msg->wrench.force.y - wrench_offset[1]);
     fz = lp_filters[2].compute(msg->wrench.force.z - wrench_offset[2]);
@@ -49,7 +49,7 @@ void FTSensorHandler::signal_callback(const geometry_msgs::WrenchStampedConstPtr
     log_latest_wrench(msg->header);
 }
 
-void FTSensorHandler::get_latest_wrench(std::vector<double> &force, std::vector<double> &torque) {
+void FTSensorHandle::get_latest_wrench(std::vector<double> &force, std::vector<double> &torque) {
     force.resize(3);
     torque.resize(3);
     force[0] = fx;
@@ -60,7 +60,7 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &force, std::vector<
     torque[2] = tz;
 }
 
-void FTSensorHandler::get_latest_wrench(std::vector<double> &wrench) {
+void FTSensorHandle::get_latest_wrench(std::vector<double> &wrench) {
     if (fx == 0.12543214218){
         ROS_FATAL_STREAM("FT handler has not received any signal. Stopping!");
         ros::shutdown();
@@ -74,7 +74,7 @@ void FTSensorHandler::get_latest_wrench(std::vector<double> &wrench) {
     wrench[5] = tz;
 }
 
-FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input) :  fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
+FTSensorHandle::FTSensorHandle(const std::vector<double> &wrench_offset_input) :  fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
     // fx is initialized with a special constant, which is checked to make sure that the handler has received wrench reading.
     wrench_offset.resize(6);
     b = {1};
@@ -85,7 +85,7 @@ FTSensorHandler::FTSensorHandler(const std::vector<double> &wrench_offset_input)
     }
 }
 
-FTSensorHandler::FTSensorHandler() : fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
+FTSensorHandle::FTSensorHandle() : fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0) {
     wrench_offset.resize(6);
     b = {1};
     a = {1};
@@ -95,7 +95,7 @@ FTSensorHandler::FTSensorHandler() : fx(0.12543214218), fy(0), fz(0), tx(0), ty(
     }
 }
 
-FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_in, dVector a_in): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)  {
+FTSensorHandle::FTSensorHandle(const dVector &wrench_offset_input, dVector b_in, dVector a_in): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)  {
     b = b_in;
     a = a_in;
     wrench_offset.resize(6);
@@ -105,7 +105,7 @@ FTSensorHandler::FTSensorHandler(const dVector &wrench_offset_input, dVector b_i
     }
 }
 
-void FTSensorHandler::log_latest_wrench(const std_msgs::Header &header) {
+void FTSensorHandle::log_latest_wrench(const std_msgs::Header &header) {
     if (debug){
         geometry_msgs::WrenchStamped msg;
         msg.header = header;
@@ -120,7 +120,7 @@ void FTSensorHandler::log_latest_wrench(const std_msgs::Header &header) {
 }
 
 
-void FTSensorHandler::set_wrench_offset(dVector wrench_offset_) {
+void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
     wrench_offset_.resize(6);
      for (unsigned int i = 0; i < 6; ++i) {
         wrench_offset[i] = wrench_offset_[i];

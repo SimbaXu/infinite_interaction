@@ -112,8 +112,8 @@ int main(int argc, char **argv)
         exit(0);
     }
     // FTsensor handler
-    FTSensorHandler ft_handler(wrench_ref);
-    ros::Subscriber ft_sub = node_handle.subscribe(ft_sensor_topic, 3, &FTSensorHandler::signal_callback, &ft_handler);
+    FTSensorHandle ft_handler(wrench_ref);
+    ros::Subscriber ft_sub = node_handle.subscribe(ft_sensor_topic, 3, &FTSensorHandle::signal_callback, &ft_handler);
     // position handler
     JointPositionHandler position_handler;
     ros::Subscriber position_handler_sub = node_handle.subscribe(joint_state_topic, 3, &JointPositionHandler::signal_callback, &position_handler);
