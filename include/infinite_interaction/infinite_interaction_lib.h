@@ -463,7 +463,7 @@ namespace RTUtils{
      * @param tspec1
      * @param tspec2
      */
-    inline void diff_timespec(int& diff_nsec, timespec& tspec1, timespec& tspec2);
+    void diff_timespec(int& diff_nsec, timespec& tspec1, timespec& tspec2);
 
     /*! Set the current process' scheduling policy to fifo
      *

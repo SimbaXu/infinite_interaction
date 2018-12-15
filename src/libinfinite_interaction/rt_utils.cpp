@@ -15,7 +15,7 @@ namespace RTUtils {
     }
 
 
-    inline void diff_timespec(int &diff_nsec, timespec &tspec1, timespec &tspec2) {
+    void diff_timespec(int &diff_nsec, timespec &tspec1, timespec &tspec2) {
         diff_nsec = NANOSECS_IN_SEC * (tspec2.tv_sec - tspec1.tv_sec) + (tspec2.tv_nsec - tspec1.tv_nsec);
     }
 
