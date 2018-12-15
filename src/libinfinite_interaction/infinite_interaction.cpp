@@ -33,6 +33,7 @@ void InfInteraction::TopicDebugger::publish_multiarray(int topic_id, const dVect
     }
 }
 
+
 void FTSensorHandle::set_debug(ros::NodeHandle &nh) {
     debug=true;
     std::string topic_name = "debug/netft/filtered";
@@ -140,24 +141,6 @@ void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
         wrench_offset[i] = wrench_offset_[i];
     }
 }
-
-
-ExternalTorquePublisher::ExternalTorquePublisher(std::string name_space, ros::NodeHandle &nh): _name_space(name_space), _nh(nh)  {
-    for (int i=0; i < 6; i++){
-        std::string jnt_torque_topic = _name_space + "/tau" + std::to_string(i + 1);
-        ros::Publisher jnt_torque_pub = _nh.advertise<std_msgs::Float64>(jnt_torque_topic, 5);
-        _jnt_torque_pubs.push_back(jnt_torque_pub);
-    }
-}
-
-void ExternalTorquePublisher::publish_joint_torques(std::vector<double> &taus) {
-    for(int i=0; i < 6; i++){
-        std_msgs::Float64 msg;
-        msg.data = taus[i];
-        _jnt_torque_pubs[i].publish(msg);
-    }
-}
-
 JointPositionHandler::JointPositionHandler() {
     joint_position.resize(6);
     for (int i = 0; i < 6; ++i) {
@@ -184,71 +167,75 @@ bool JointPositionHandler::received_msg() {
     return true;
 }
 
+namespace HWHandle {
 
-JointPositionController::JointPositionController(std::string name_space, ros::NodeHandle &nh) : _name_space(name_space), _nh(nh) {
-    // connection to joint commands topic
-    for (int i=0; i < 6; i++){
-        std::string jnt_topic = "/" + _name_space + "/j" + std::to_string(i + 1) + "/command";
-        ros::Publisher jnt_pub = _nh.advertise<std_msgs::Float64>(jnt_topic, 5);
-        _jnt_pubs.push_back(jnt_pub);
-    }
-    _joint_position.resize(6);
-    for (int i = 0; i < 6; ++i) {
-        _joint_position[i] = -999; // coded, should changed if have received message
-    }
+    JointPositionController::JointPositionController(std::string name_space, ros::NodeHandle &nh) : _name_space(
+            name_space), _nh(nh) {
+        // connection to joint commands topic
+        for (int i = 0; i < 6; i++) {
+            std::string jnt_topic = "/" + _name_space + "/j" + std::to_string(i + 1) + "/command";
+            ros::Publisher jnt_pub = _nh.advertise<std_msgs::Float64>(jnt_topic, 5);
+            _jnt_pubs.push_back(jnt_pub);
+        }
+        _joint_position.resize(6);
+        for (int i = 0; i < 6; ++i) {
+            _joint_position[i] = -999; // coded, should changed if have received message
+        }
 
-    // subscription to joint states topic
-    _jnt_pos_subscriber = nh.subscribe("/" + _name_space + "/joint_states", 3, &JointPositionController::signal_callback, this);
-    ros::Duration(0.5).sleep(); ros::spinOnce(); // wait a little before updating the current joint position
-    if (!received_msg()){
-        ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
-        ros::shutdown();
-    }
-    else{
-      ROS_INFO("[JointPositionController] Receive joint position");
-      ROS_DEBUG_STREAM("jnt: " << _joint_position[0] << _joint_position[1]
-		       << _joint_position[2] << _joint_position[3]
-		       << _joint_position[4] << _joint_position[5]);
-    }
-}
-
-void JointPositionController::send_jnt_command(std::vector<double> &jnt_positions) {
-    for(int i=0; i < 6; i++){
-        std_msgs::Float64 msg;
-        msg.data = jnt_positions[i];
-        _jnt_pubs[i].publish(msg);
-    }
-}
-
-void JointPositionController::signal_callback(const sensor_msgs::JointStateConstPtr &msg) {
-    for (int i = 0; i < 6; ++i) {
-        _joint_position[i] = msg->position[i];
-    }
-}
-
-void JointPositionController::get_latest_jnt(std::vector<double> &jnt_positions) {
-    for (int i=0; i < 6; ++i){
-        jnt_positions[i] = _joint_position[i];
-    }
-}
-
-bool JointPositionController::received_msg() {
-    for (int i=0; i < 6; ++i){
-        if (_joint_position[i] == -999){
-            return false;
+        // subscription to joint states topic
+        _jnt_pos_subscriber = nh.subscribe("/" + _name_space + "/joint_states", 3,
+                                           &JointPositionController::signal_callback, this);
+        ros::Duration(0.5).sleep();
+        ros::spinOnce(); // wait a little before updating the current joint position
+        if (!received_msg()) {
+            ROS_FATAL("Have not received messages to update initial joint position! \n-- Terminating!");
+            ros::shutdown();
+        } else {
+            ROS_INFO("[JointPositionController] Receive joint position");
+            ROS_DEBUG_STREAM("jnt: " << _joint_position[0] << _joint_position[1]
+                                     << _joint_position[2] << _joint_position[3]
+                                     << _joint_position[4] << _joint_position[5]);
         }
     }
-    return true;
-}
 
-std::vector<double> JointPositionController::get_latest_jnt() {
-    std::vector<double> jnt_latest(6);
-    for(int i=0; i < 6; ++i){
-        jnt_latest[i] = _joint_position[i];
+    void JointPositionController::send_jnt_command(std::vector<double> &jnt_positions) {
+        for (int i = 0; i < 6; i++) {
+            std_msgs::Float64 msg;
+            msg.data = jnt_positions[i];
+            _jnt_pubs[i].publish(msg);
+        }
     }
-    return jnt_latest;
-}
 
+    void JointPositionController::signal_callback(const sensor_msgs::JointStateConstPtr &msg) {
+        for (int i = 0; i < 6; ++i) {
+            _joint_position[i] = msg->position[i];
+        }
+    }
+
+    void JointPositionController::get_latest_jnt(std::vector<double> &jnt_positions) {
+        for (int i = 0; i < 6; ++i) {
+            jnt_positions[i] = _joint_position[i];
+        }
+    }
+
+    bool JointPositionController::received_msg() {
+        for (int i = 0; i < 6; ++i) {
+            if (_joint_position[i] == -999) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<double> JointPositionController::get_latest_jnt() {
+        std::vector<double> jnt_latest(6);
+        for (int i = 0; i < 6; ++i) {
+            jnt_latest[i] = _joint_position[i];
+        }
+        return jnt_latest;
+    }
+
+}
 
 DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
     n = 0;

@@ -27,14 +27,6 @@ void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
     viewer->main(showgui);
 }
 
-void print_dVector(dVector x, std::string name){
-    std::cout << name << ": ";
-    for (unsigned int i=0; i < x.size(); ++i){
-        std::cout << x[i] << ", ";
-    }
-    std::cout << std::endl;
-}
-
 
 int main(int argc, char **argv)
 {
@@ -68,12 +60,21 @@ int main(int argc, char **argv)
     node_handle.param("viewer", viewer, true);
     node_handle.param("debug", debug, false);
 
+    // TODO: incorporate these parameters into a launch file
+    std::string robot_handle_type = "direct";
+    std::string robot_ip_addr = "192.168.0.21";
+
     /* Hardware handles
      *
      */
     // Robot controllers
-    std::shared_ptr<AbstractRobotController> robot_handle;
-    robot_handle = std::make_shared<JointPositionController> (robot_ns, node_handle);
+    std::shared_ptr<HWHandle::AbstractRobotController> robot_handle;
+    if (robot_handle_type == "ros_control"){
+        robot_handle = std::make_shared<HWHandle::JointPositionController> (robot_ns, node_handle);
+    }
+    else if (robot_handle_type == "direct"){
+//        robot_handle = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr);
+    }
     dVector jnt_init = robot_handle->get_latest_jnt();
 
     // FT sensor data acquisition setup via FTsensor handler

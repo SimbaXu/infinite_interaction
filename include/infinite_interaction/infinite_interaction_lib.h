@@ -390,6 +390,54 @@ public:
     void log_latest_wrench(const std_msgs::Header &);
 };
 
+namespace HWHandle {
+
+    class AbstractRobotController {
+    public:
+        virtual void send_jnt_command(std::vector<double> &jnt_cmds) = 0;
+
+        virtual void get_latest_jnt(std::vector<double> &jnt_positions) = 0;
+
+        virtual std::vector<double> get_latest_jnt() = 0;
+
+        virtual ~AbstractRobotController() {};
+    };
+
+    /*! Joint Position Robot controller.
+     *
+     *  This class sends joint position commands through the topics
+     *  exposed by ros-control, and receives the current joint positions
+     *  by listening to joint state message. Retrieving and sending are
+     *  accessible via member functions.
+     */
+    class JointPositionController : public AbstractRobotController {
+        std::string _name_space;
+        std::vector<ros::Publisher> _jnt_pubs;
+        ros::NodeHandle _nh;
+        std::vector<double> _joint_position;
+        ros::Subscriber _jnt_pos_subscriber;
+    public:
+        /*! Constructor for a joint position controller class.
+         */
+        explicit JointPositionController(std::string name_space, ros::NodeHandle &nh);
+
+        void send_jnt_command(std::vector<double> &jnt_cmds);
+
+        void get_latest_jnt(std::vector<double> &jnt_positions);
+
+        std::vector<double> get_latest_jnt();
+
+        void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
+
+        bool received_msg();
+    };
+
+    class RC8HWController : public AbstractRobotController {
+
+    public:
+
+    };
+}
 
 
 class JointPositionHandler{
@@ -402,50 +450,7 @@ public:
 };
 
 
-class AbstractRobotController {
- public:
-  virtual void send_jnt_command(std::vector<double> &jnt_cmds) = 0;
-  virtual void get_latest_jnt(std::vector<double> &jnt_positions) = 0;
-  virtual std::vector<double> get_latest_jnt() = 0;
-  virtual ~AbstractRobotController() {};
-};
 
-/*! Joint Position Robot controller.
- *
- *  This class sends joint position commands through the topics
- *  exposed by ros-control, and receives the current joint positions
- *  by listening to joint state message. Retrieving and sending are
- *  accessible via member functions.
- */
-class JointPositionController: public AbstractRobotController {
-public:
-    /*! Constructor for a joint position controller class.
-     */
-    explicit JointPositionController(std::string name_space, ros::NodeHandle& nh);
-    void send_jnt_command(std::vector<double> &jnt_cmds);
-    void get_latest_jnt(std::vector<double> &jnt_positions);
-    std::vector<double> get_latest_jnt();
-    void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
-    bool received_msg();
-
-private:
-    std::string _name_space;
-    std::vector<ros::Publisher> _jnt_pubs;
-    ros::NodeHandle _nh;
-    std::vector<double> _joint_position;
-    ros::Subscriber _jnt_pos_subscriber;
-};
-
-class ExternalTorquePublisher {
-public:
-    explicit ExternalTorquePublisher(std::string name_space, ros::NodeHandle& nh);
-    void publish_joint_torques(std::vector<double>& taus);
-
-private:
-    std::string _name_space;
-    std::vector<ros::Publisher> _jnt_torque_pubs;
-    ros::NodeHandle _nh;
-};
 
 namespace RTUtils{
     /*! Increment the given timespec.

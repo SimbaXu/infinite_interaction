@@ -58,18 +58,17 @@ target_link_libraries(joint_admittance_controller
 set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
-target_include_directories(sinuisoidal_motion_generator PUBLIC include)
-target_link_libraries(sinuisoidal_motion_generator
-        ${catkin_LIBRARIES}
-		infinite_interaction
-		qpOASES Eigen3::Eigen
-		# openrave depencidencies
-        ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
-        ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
-  )
-set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
-set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
+#add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
+#target_include_directories(sinuisoidal_motion_generator PUBLIC include)
+#target_link_libraries(sinuisoidal_motion_generator
+#        ${catkin_LIBRARIES}
+#		infinite_interaction qpOASES
+#		# openrave depencidencies
+#        ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
+#        ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+#  )
+#set_target_properties(sinuisoidal_motion_generator PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
+#set_target_properties(sinuisoidal_motion_generator PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
 add_executable(test_discrete_time_filter src/tests/test_discrete_time_filter.cpp
 		src/libinfinite_interaction/infinite_interaction.cpp
