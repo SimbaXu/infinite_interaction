@@ -4,7 +4,7 @@
 
 #include "infinite_interaction/infinite_interaction_lib.h"
 #include <ros/ros.h>
-#include <include/infinite_interaction/infinite_interaction_lib.h>
+//#include <include/infinite_interaction/infinite_interaction_lib.h>
 
 
 InfInteraction::TopicDebugger::TopicDebugger(std::string debug_ns_, ros::NodeHandle &node_handle_): debug_ns(debug_ns_), nh(node_handle_){ }

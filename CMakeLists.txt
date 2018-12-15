@@ -26,36 +26,43 @@ if( Boost_INCLUDE_DIRS )
     include_directories(${Boost_INCLUDE_DIRS})
 endif()
 include_directories(
-  ${OpenRAVE_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR} 
-  ${catkin_INCLUDE_DIRS}
+		include
+		${OpenRAVE_INCLUDE_DIRS}
+		${CMAKE_CURRENT_SOURCE_DIR}
+		${catkin_INCLUDE_DIRS}
 )
 catkin_package()
 
+add_library(infinite_interaction
+		src/libinfinite_interaction/infinite_interaction.cpp
+		src/libinfinite_interaction/filters.cpp
+		src/libinfinite_interaction/rt_utils.cpp
+		)
+target_link_libraries(infinite_interaction
+		${catkin_LIBRARIES}
+		Eigen3::Eigen
+		)
+target_include_directories(infinite_interaction PUBLIC include)
 
 
 # admittance controller: (main program)
-add_executable(joint_admittance_controller
-        src/admittance_controller.cpp
-		src/libinfinite_interaction/infinite_interaction.cpp
-		src/libinfinite_interaction/filters.cpp
-        )
+add_executable(joint_admittance_controller src/admittance_controller.cpp )
 target_include_directories(joint_admittance_controller PUBLIC include)
 target_link_libraries(joint_admittance_controller
-  ${catkin_LIBRARIES}
-  qpOASES Eigen3::Eigen
-  # openrave dependencies
-  ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
-  ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY}
-  )
+		${catkin_LIBRARIES}
+		infinite_interaction qpOASES
+		# openrave dependencies
+		${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
+		${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY})
 
 set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
-add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp
-		src/libinfinite_interaction/infinite_interaction.cpp)
+add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
 target_include_directories(sinuisoidal_motion_generator PUBLIC include)
 target_link_libraries(sinuisoidal_motion_generator
         ${catkin_LIBRARIES}
+		infinite_interaction
 		qpOASES Eigen3::Eigen
 		# openrave depencidencies
         ${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}

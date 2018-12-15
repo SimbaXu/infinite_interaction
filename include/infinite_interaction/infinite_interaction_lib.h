@@ -15,8 +15,14 @@
 #include <algorithm>
 #include <openrave-core.h>
 
+// time header for RT utility functions
+#include <time.h>
+
 typedef std::vector<double> dVector;
 typedef std_msgs::Float64MultiArray MultiArrayMsg;
+
+
+const int NANOSECS_IN_SEC = 1000000000;
 
 inline double MIN(double x, double y)
 {
@@ -440,6 +446,31 @@ private:
     std::vector<ros::Publisher> _jnt_torque_pubs;
     ros::NodeHandle _nh;
 };
+
+namespace RTUtils{
+    /*! Increment the given timespec.
+     *
+     * @param tspec a timespace to increment
+     * @param inc_nsec increment internal in nanoseconds
+     */
+    void increment_timespec(timespec& tspec, const int& inc_nsec);
+
+    /*! Compute the difference between two timespecs.
+     *
+     * Result = timespec2 - timespec1
+     *
+     * @param diff_nsec difference in nanoseconds.
+     * @param tspec1
+     * @param tspec2
+     */
+    inline void diff_timespec(int& diff_nsec, timespec& tspec1, timespec& tspec2);
+
+    /*! Set the current process' scheduling policy to fifo
+     *
+     * @return 0 if success, 1 otherwise.
+     */
+    int set_policy_fifo();
+}
 
 [[deprecated("Use Eigen3 instead: cleaner code and less buggy")]]
 void matrix_mult(std::vector<double> &A, std::vector<double> &x, std::vector<double> &y);

@@ -273,11 +273,16 @@ int main(int argc, char **argv)
     // loop variable
     std::vector<double> jnt_cmd = {0, 0, 0, 0, 0, 0}, jnt_n(6);
     std::vector<double> wrench_n = {0, 0, 0, 0, 0, 0}, y_n, u_n;
+
+    // rt setups
+    timespec slp_deadline, slp_actual;
+
+    const int FOUR_MS = 4000000;
+    int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
+    clock_gettime(CLOCK_MONOTONIC, &slp_deadline);
     int cy_idx = 0;  // cycle index
     // Control loop
     while(!ros::isShuttingDown()){
-        auto tstart = ros::Time::now();
-
         // call all callbacks
         ros::spinOnce();
 
@@ -296,8 +301,14 @@ int main(int argc, char **argv)
         position_map_ptr->set_state(jnt_n);
         jnt_cmd = position_map_ptr->compute(u_n);
 
+        // stage 1 finished; sleep
+        RTUtils::increment_timespec(slp_deadline, FOUR_MS);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_deadline, NULL); // sleep until slp_deadline
+
         // send joint position command
         robot_handle-> send_jnt_command(jnt_cmd);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_actual, NULL);
+        RTUtils::diff_timespec(diff_nsec, slp_deadline, slp_actual);
 
         // publish debug information
         if (debug) {
@@ -307,17 +318,15 @@ int main(int argc, char **argv)
             debugger.publish_multiarray(uId, u_n);
             debugger.publish_multiarray(qId, jnt_n);
             debugger.publish_multiarray(qcmdId, jnt_cmd);
-        }
 
-        // record time required
-        auto tend = ros::Time::now();
-        ros::Duration tdur = tend - tstart;
-        if (debug){
-            ROS_DEBUG_STREAM_THROTTLE(1, "comp time: " << tdur.toSec() * 1000 << "ms");
+            // publish time discrepancy
+            ROS_DEBUG_STREAM("diff: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
         }
-
         cy_idx = (cy_idx + 1) % 2147483640;
-        rate.sleep();
+
+        // stage 2 finsished, sleep
+        RTUtils::increment_timespec(slp_deadline, FOUR_MS);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_deadline, NULL);
     }
 
     return 0;

@@ -6,7 +6,6 @@
 #include <Eigen/Dense>
 #include <qpOASES.hpp>
 #include <eigen3/Eigen/src/Core/Matrix.h>
-#include <include/infinite_interaction/infinite_interaction_lib.h>
 
 
 InfInteraction::JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string ft_sensor_frame)
