@@ -92,6 +92,7 @@ int main(int argc, char **argv)
     OpenRAVE::RobotBasePtr robot_ptr;
     robot_ptr = env_ptr->GetRobot(robot_name);
     auto manip_ptr = robot_ptr->GetActiveManipulator();
+    robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});  // set the active dofs to [0,..,5]
 
     // Interaction controller selection: depending on the loaded
     // parameter, difference "blocks" will be initialized. This is
@@ -275,11 +276,17 @@ int main(int argc, char **argv)
     std::vector<double> wrench_n = {0, 0, 0, 0, 0, 0}, y_n, u_n;
 
     // rt setups
-    timespec slp_deadline, slp_actual;
+    timespec slp_dline_spec, sent_spec, wake_spec;
+    if (RTUtils::set_policy_fifo() == 0) {
+      ROS_INFO("sch policy set to fifo");
+    }
+    else{
+      ROS_INFO("sch policy remained default");
+    }
 
     const int FOUR_MS = 4000000;
     int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
-    clock_gettime(CLOCK_MONOTONIC, &slp_deadline);
+    clock_gettime(CLOCK_MONOTONIC, &slp_dline_spec);
     int cy_idx = 0;  // cycle index
     // Control loop
     while(!ros::isShuttingDown()){
@@ -302,17 +309,16 @@ int main(int argc, char **argv)
         jnt_cmd = position_map_ptr->compute(u_n);
 
         // stage 1 finished; sleep
-        RTUtils::increment_timespec(slp_deadline, FOUR_MS);
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_deadline, NULL); // sleep until slp_deadline
+        RTUtils::increment_timespec(slp_dline_spec, FOUR_MS);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_dline_spec, NULL); // sleep until slp_dline_spec
 
         // send joint position command
+	clock_gettime(CLOCK_MONOTONIC, &wake_spec);
         robot_handle-> send_jnt_command(jnt_cmd);
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_actual, NULL);
-        RTUtils::diff_timespec(diff_nsec, slp_deadline, slp_actual);
+	clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
         // publish debug information
         if (debug) {
-            ROS_DEBUG_STREAM_THROTTLE(1, "Debug mode on. Publishing message");
             debugger.publish_multiarray(wId, wrench_n);
             debugger.publish_multiarray(yId, y_n);
             debugger.publish_multiarray(uId, u_n);
@@ -320,13 +326,18 @@ int main(int argc, char **argv)
             debugger.publish_multiarray(qcmdId, jnt_cmd);
 
             // publish time discrepancy
-            ROS_DEBUG_STREAM("diff: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
+	    if (cy_idx % 125 == 0){
+	      RTUtils::diff_timespec(diff_nsec, slp_dline_spec, wake_spec);
+	      ROS_DEBUG_STREAM("wake - deadline-to-send: " << diff_nsec << " nsec (this value should be very small, ideally less than 1e4)");
+	      RTUtils::diff_timespec(diff_nsec, slp_dline_spec, sent_spec);
+	      ROS_DEBUG_STREAM("sent - deadline-to-send: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
+	    }
         }
         cy_idx = (cy_idx + 1) % 2147483640;
 
         // stage 2 finsished, sleep
-        RTUtils::increment_timespec(slp_deadline, FOUR_MS);
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_deadline, NULL);
+        RTUtils::increment_timespec(slp_dline_spec, FOUR_MS);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_dline_spec, NULL);
     }
 
     return 0;
