@@ -68,10 +68,19 @@ int main(int argc, char **argv)
     node_handle.param("viewer", viewer, true);
     node_handle.param("debug", debug, false);
 
-    // Robot Controller
+    /* Hardware handles
+     *
+     */
+    // Robot controllers
     std::shared_ptr<AbstractRobotController> robot_handle;
     robot_handle = std::make_shared<JointPositionController> (robot_ns, node_handle);
     dVector jnt_init = robot_handle->get_latest_jnt();
+
+    // FT sensor data acquisition setup via FTsensor handler
+    FTSensorHandle ft_handle(node_handle, ft_topic);
+    if (debug){
+        ft_handle.set_debug(node_handle);
+    }
 
     // debugger which publishes data to topics
     std::string debug_ns = "/debugger";
@@ -92,13 +101,17 @@ int main(int argc, char **argv)
     OpenRAVE::RobotBasePtr robot_ptr;
     robot_ptr = env_ptr->GetRobot(robot_name);
     auto manip_ptr = robot_ptr->GetActiveManipulator();
-    robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});  // set the active dofs to [0,..,5]
+    // set active dofs to [0,..,5]
+    robot_ptr->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
 
-    // Interaction controller selection: depending on the loaded
-    // parameter, difference "blocks" will be initialized. This is
-    // where most of the work should be done: creating custom classes
-    // for the task at hand and initializing them. The control loop is
-    // very simple.
+    /* Control loop components construct.
+     *
+     * Interaction controller selection: depending on the loaded
+     * parameter, difference "blocks" will be initialized. This is
+     * where most of the work should be done: creating custom classes
+     * for the task at hand and initializing them. The control loop is
+     * very simple.
+     */
     std::string controller_id, controller_type;
     if (!node_handle.getParam("/active_controller", controller_id)){
         ROS_ERROR_STREAM("No active controller found. Check if parameters have been loaded to parameter sever!");
@@ -108,13 +121,6 @@ int main(int argc, char **argv)
         ROS_ERROR_STREAM("Unable to decide controller type. Check if parameters have been loaded to parameter sever!");
         ros::shutdown();
     }
-
-    // FT sensor data acquisition setup via FTsensor handler
-    FTSensorHandle ft_handle(node_handle, ft_topic);
-    if (debug){
-        ft_handle.set_debug(node_handle);
-    }
-
     // Initialize controlling blocks for the given task
     std::shared_ptr<SignalBlock> force_map_ptr;
     std::shared_ptr<SignalBlock> controller_ptr;
@@ -271,7 +277,14 @@ int main(int argc, char **argv)
         ros::shutdown();
     }
 
-    // loop variable
+    /* Real-Time (RT) control loop.
+     *
+     * The program enters an infinite control loop. In this, it takes
+     * wrench measurements, transform it to joint positions through an
+     * intricate set of operations before sending the values to the
+     * robot.
+     */
+    // pre-defined loop variables
     std::vector<double> jnt_cmd = {0, 0, 0, 0, 0, 0}, jnt_n(6);
     std::vector<double> wrench_n = {0, 0, 0, 0, 0, 0}, y_n, u_n;
 
