@@ -424,6 +424,8 @@ namespace HWHandle {
          */
         explicit JointPositionController(std::string name_space, ros::NodeHandle &nh);
 
+        ~JointPositionController() {};
+
         void send_jnt_command(std::vector<double> &jnt_cmds);
 
         void get_latest_jnt(std::vector<double> &jnt_positions);
@@ -443,6 +445,8 @@ namespace HWHandle {
          *
          */
         explicit RC8HWController(std::string ip_addr);
+
+        ~RC8HWController();
 
         void send_jnt_command(std::vector<double> &jnt_cmds);
 

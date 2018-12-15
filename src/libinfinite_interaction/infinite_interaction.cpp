@@ -255,6 +255,12 @@ namespace HWHandle {
         _rc8_controller_ptr->startMotors(100);
     }
 
+    RC8HWController::~RC8HWController() {
+        std::cout << "Stopping motors and disconnecting from the RC8" << std::endl;
+        _rc8_controller_ptr->stopMotors();
+        _rc8_controller_ptr->disconnect();
+    }
+
     void RC8HWController::send_jnt_command(std::vector<double> &jnt_cmds) {
         _rc8_controller_ptr->setJointPositions(jnt_cmds);
         _rc8_controller_ptr->update();
