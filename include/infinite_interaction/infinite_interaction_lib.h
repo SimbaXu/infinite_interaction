@@ -18,6 +18,9 @@
 // time header for RT utility functions
 #include <time.h>
 
+// RC8
+#include "denso_control/rc8_controller_interface.h"
+
 typedef std::vector<double> dVector;
 typedef std_msgs::Float64MultiArray MultiArrayMsg;
 
@@ -433,9 +436,19 @@ namespace HWHandle {
     };
 
     class RC8HWController : public AbstractRobotController {
-
+        std::vector<double> _jnt;
+        std::shared_ptr<denso_control::RC8ControllerInterface> _rc8_controller_ptr;
     public:
+        /* Make connection to the RC8, start motor.
+         *
+         */
+        explicit RC8HWController(std::string ip_addr);
 
+        void send_jnt_command(std::vector<double> &jnt_cmds);
+
+        void get_latest_jnt(std::vector<double> &jnt_positions);
+
+        std::vector<double> get_latest_jnt();
     };
 }
 

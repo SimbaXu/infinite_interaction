@@ -11,6 +11,7 @@
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>denso_control</build_depend>
 
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
@@ -21,7 +22,6 @@
   <run_depend>denso_description</run_depend>
   <run_depend>denso_gazebo</run_depend>
   <run_depend>openrave_catkin</run_depend>
-  <run_depend>ftsensorless</run_depend>
 
   <export>
 

@@ -2,9 +2,8 @@
 // Created by hung on 7/11/18.
 //
 
-#include "infinite_interaction/infinite_interaction_lib.h"
 #include <ros/ros.h>
-//#include <include/infinite_interaction/infinite_interaction_lib.h>
+#include <infinite_interaction/infinite_interaction_lib.h>
 
 
 InfInteraction::TopicDebugger::TopicDebugger(std::string debug_ns_, ros::NodeHandle &node_handle_): debug_ns(debug_ns_), nh(node_handle_){ }
@@ -233,6 +232,42 @@ namespace HWHandle {
             jnt_latest[i] = _joint_position[i];
         }
         return jnt_latest;
+    }
+
+    RC8HWController::RC8HWController(std::string ip_addr){
+        _rc8_controller_ptr = std::make_shared<denso_control::RC8ControllerInterface>(ip_addr);
+        _rc8_controller_ptr->setSlaveMode(SlaveMode::J0);
+        bool ret;
+
+        // connection
+        ret = _rc8_controller_ptr->connect();
+        if (!ret){
+            ROS_ERROR("Unable to connect to the RC8");
+            ros::shutdown();
+            return;
+        } else ROS_INFO("Connection successful");
+
+        // get initial joint position
+        _rc8_controller_ptr->update();
+        _rc8_controller_ptr->getJointPositions(_jnt);
+
+        // start motor at full speed
+        _rc8_controller_ptr->startMotors(100);
+    }
+
+    void RC8HWController::send_jnt_command(std::vector<double> &jnt_cmds) {
+        _rc8_controller_ptr->setJointPositions(jnt_cmds);
+        _rc8_controller_ptr->update();
+    }
+
+    void RC8HWController::get_latest_jnt(std::vector<double> &jnt_positions) {
+        _rc8_controller_ptr->getJointPositions(jnt_positions);
+        _rc8_controller_ptr->getJointPositions(_jnt);
+    }
+
+    std::vector<double> RC8HWController::get_latest_jnt() {
+        _rc8_controller_ptr->getJointPositions(_jnt);
+        return _jnt;
     }
 
 }

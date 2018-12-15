@@ -7,9 +7,10 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  rospy
-  std_msgs
+		roscpp
+		rospy
+		std_msgs
+		denso_control
 )
 
 find_package(Eigen3 3.3 REQUIRED)
