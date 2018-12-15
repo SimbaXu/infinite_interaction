@@ -236,7 +236,7 @@ namespace HWHandle {
 
     RC8HWController::RC8HWController(std::string ip_addr){
         _rc8_controller_ptr = std::make_shared<denso_control::RC8ControllerInterface>(ip_addr);
-        _rc8_controller_ptr->setSlaveMode(SlaveMode::J0);
+        _rc8_controller_ptr->setSlaveMode(SlaveMode::J1);
         bool ret;
 
         // connection
@@ -252,7 +252,13 @@ namespace HWHandle {
         _rc8_controller_ptr->getJointPositions(_jnt);
 
         // start motor at full speed
-        _rc8_controller_ptr->startMotors(100);
+        ret = _rc8_controller_ptr->startMotors(100);
+        if (!ret){
+            ROS_ERROR("Unable to start motor");
+            ros::shutdown();
+            return;
+        } else ROS_INFO("Motor started");
+
     }
 
     RC8HWController::~RC8HWController() {
@@ -263,7 +269,11 @@ namespace HWHandle {
 
     void RC8HWController::send_jnt_command(std::vector<double> &jnt_cmds) {
         _rc8_controller_ptr->setJointPositions(jnt_cmds);
-        _rc8_controller_ptr->update();
+        _ret = _rc8_controller_ptr->update();
+	if (!_ret){
+	  ROS_ERROR("Send slv command fails! Probably due to E-stop. Shutting down.");
+	  ros::shutdown();
+	}
     }
 
     void RC8HWController::get_latest_jnt(std::vector<double> &jnt_positions) {

@@ -440,6 +440,7 @@ namespace HWHandle {
     class RC8HWController : public AbstractRobotController {
         std::vector<double> _jnt;
         std::shared_ptr<denso_control::RC8ControllerInterface> _rc8_controller_ptr;
+	bool _ret;
     public:
         /* Make connection to the RC8, start motor.
          *
