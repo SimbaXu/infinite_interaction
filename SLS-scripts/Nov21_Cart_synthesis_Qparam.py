@@ -527,10 +527,11 @@ def Q_synthesis(Pz_design, specs):
               cost1.value, cost2.value, cost3.value, cost4.value, cost5.value,
               cost_inf.value))
     print("Explanations:\n"
-          "cost1: |y[n] - y_ideal[n]|_2\n"
+          "cost1: |y[n] - y_ideal[n]|_2 * weight + |y[n] - 1|_2 * weight_reg\n"
           "cost2: |Q|_1\n"
           "cost3: |DIFF * Q|_2\n"
           "cost4: |DIFF * y[n]|_2 (for smooth movement)\n"
+          "cost5: |y[n] - y_des[n]|_1\n"
           "where DIFF is the difference matrix.")
 
     # debug
@@ -614,14 +615,16 @@ def main():
     # imp_weight[:] = 1
     # plt.plot(imp_desired); plt.show()
 
+    k_nom = 50
+
     # desired response from w3 to z1
     Pz_design = plantMdelta(
-        E_gain=50, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
+        E_gain=k_nom, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=2)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [25, 0.1], [25, 0.015], [50, 0.004], [200, 0.002]], preview=True)
+        [[0.1, 0.1], [10, 0.1], [25, 0.010], [50, 0.004], [200, 0.002]], preview=True)
 
-    desired_sys = co.c2d(co.tf([50, 0], [2.5, 12, 0 + 50]), Ts)
+    desired_sys = co.c2d(co.tf([k_nom, 0], [2.5, 12, 0 + k_nom]), Ts)
 
     def desired_sys_up(freqs, desired_sys=desired_sys):
         return desired_sys.freqresp(freqs)[0][0, 0]
@@ -631,10 +634,10 @@ def main():
         'Nsteps': 1000,
         # 'freqs': np.logspace(-2, np.log10(np.pi / Ts), 1000),
         'freqs': np.linspace(1e-2, np.pi / Ts, 1000),
-        'resp_delay': 3,  # number of delayed time step
+        'resp_delay': 2,  # number of delayed time step
 
         # different objective
-        'objective': ['step_int', (0, 2), desired_sys, 1.5],
+        'objective': ['step_int', (0, 2), desired_sys, 5],
         'objective-Hinf': [
             [(0, 2), desired_sys_up, 1.0]
         ],
@@ -669,7 +672,7 @@ def main():
 
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
-            [(0, 0), 26]
+            [(0, 0), 20]
         ],
 
         # DC gain
