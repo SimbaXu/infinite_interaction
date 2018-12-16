@@ -615,16 +615,16 @@ def main():
     # imp_weight[:] = 1
     # plt.plot(imp_desired); plt.show()
 
-    k_nom = 50
+    k_nom = 30
 
     # desired response from w3 to z1
     Pz_design = plantMdelta(
         E_gain=k_nom, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=2)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [10, 0.1], [25, 0.010], [50, 0.004], [200, 0.002]], preview=True)
+        [[0.1, 0.1], [10, 0.1], [25, 0.010], [30, 0.008], [50, 0.004], [200, 0.002]], preview=True)
 
-    desired_sys = co.c2d(co.tf([k_nom, 0], [2.5, 12, 0 + k_nom]), Ts)
+    desired_sys = co.c2d(co.tf([2.5 * k_nom, 12 * k_nom, 0], [2.5, 12, 0 + k_nom]), Ts)
 
     def desired_sys_up(freqs, desired_sys=desired_sys):
         return desired_sys.freqresp(freqs)[0][0, 0]
@@ -637,9 +637,9 @@ def main():
         'resp_delay': 2,  # number of delayed time step
 
         # different objective
-        'objective': ['step_int', (0, 2), desired_sys, 5],
+        'objective': ['step', (2, 2), desired_sys, 5],
         'objective-Hinf': [
-            [(0, 2), desired_sys_up, 1.0]
+            [(2, 2), desired_sys_up, 1.0]
         ],
 
         # a quadratic regulator objective:
