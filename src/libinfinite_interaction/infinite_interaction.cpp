@@ -236,7 +236,7 @@ namespace HWHandle {
 
     RC8HWController::RC8HWController(std::string ip_addr){
         _rc8_controller_ptr = std::make_shared<denso_control::RC8ControllerInterface>(ip_addr);
-        _rc8_controller_ptr->setSlaveMode(SlaveMode::J1);
+        _rc8_controller_ptr->setSlaveMode(SlaveMode::J0);
         bool ret;
 
         // connection
