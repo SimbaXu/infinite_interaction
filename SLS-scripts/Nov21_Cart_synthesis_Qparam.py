@@ -615,7 +615,7 @@ def main():
     # imp_weight[:] = 1
     # plt.plot(imp_desired); plt.show()
 
-    k_nom = 30
+    k_nom = 250
 
     # desired response from w3 to z1
     Pz_design = plantMdelta(
@@ -672,7 +672,7 @@ def main():
 
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
-            [(0, 0), 20]
+            # [(0, 0), 20]
         ],
 
         # DC gain
@@ -707,14 +707,19 @@ def main():
         ]
     }
 
+    m_test = 0.1
+    Pz_nom = plantMdelta(
+        E_gain=k_nom, wI=1.0, sys_type='33_mult_unt', m_int=m_test, N_in=1, N_out=2,
+        tau_R1=0.0437)
+
     Pz_contracted = plantMdelta(
-        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
+        E_gain=100, wI=1.0, sys_type='33_mult_unt', m_int=m_test, N_in=1, N_out=2)
     Pz_relaxed = plantMdelta(
-        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=2, N_out=2)
+        E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=m_test, N_in=1, N_out=2)
 
     if input("Analyze stuffs? y/[n]") == 'y':
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
-        analysis(Pz_design, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis(Pz_nom, K_Qparam, analysis_dict, controller_name='Qparam')
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(
             Pz_contracted,
@@ -731,7 +736,7 @@ def main():
 
     if input("Analyze Admittance controller") == 'y':
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
-        analysis(Pz_design, K_['ad_light'],
+        analysis(Pz_nom, K_['ad_light'],
                  analysis_dict, controller_name="ad_light")
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(Pz_contracted, K_['ad_light'],
