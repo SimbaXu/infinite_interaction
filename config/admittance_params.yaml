@@ -1,6 +1,6 @@
 # This parameter selects the active controller
-active_controller: cart3Dv2
-# active_controller: cartesian_3D_controller
+# active_controller: cart3Dv2
+active_controller: cartesian_3D_controller
 # cartesian_3D_controller
 # cart3Dv2 
 
@@ -49,7 +49,7 @@ cart3Dv2:
 
   filter: /diagonal3D/filter_dev  # controller in development
 
-  gam: 1e-3
+  gam: 1e-5
   gam2: 1e-5
 
 cartesian_3D_controller:
@@ -64,11 +64,10 @@ cartesian_3D_controller:
   # archiecture is taken directly from Wang's SLS paper. Read FIRsrfb
   # docmentation for more details.
 
-  filter: /fir_mimo/admittance3Dd  # decoupled classical admittance controller
-  # filter: /fir_mimo/still
+  filter: /fir_mimo/admittance3De  # decoupled classical admittance controller
 
-  gam: 1e-3
-  gam2: 1e-4
+  gam: 1e-5
+  gam2: 1e-5
 
 # The below dictionary (joint_admittance_control) defines controller:
 # joint_admittance_controller

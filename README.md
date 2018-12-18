@@ -33,11 +33,10 @@ Notes on running the actual system:
     # or, instead of the above step: launch netft via a node
 	roslaunch infinite_interaction load_netft.launch
 
+    # Cartesian control experiment
+    roslaunch infinite_interaction admittance_controller.launch
   #+END_SRC
 
-Cartesian control experiment
-
-roslaunch infinite_interaction admittance_controller.launch
 
 # Requirements:
 
