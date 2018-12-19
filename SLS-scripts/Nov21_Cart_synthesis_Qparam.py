@@ -451,7 +451,7 @@ def Q_synthesis(Pz_design, specs):
         cost_inf += obj_weight * cvx.norm(freq_var - func(freqs), 'inf')
 
     # passivity
-    for io_idx, wc in specs['passivity']:
+    for io_idx, delta, wc in specs['passivity']:
         if io_idx in freq_vars:
             freq_var = freq_vars[io_idx]
         else:
@@ -464,8 +464,10 @@ def Q_synthesis(Pz_design, specs):
         while freqs[idx_wc] < wc:
             idx_wc += 1
         assert(freqs[idx_wc] > wc)
-        constraints.append(
-            cvx.real(freq_var[:idx_wc]) >= 0
+        constraints.extend([
+            cvx.real(freq_var[:idx_wc]) >= 0,
+            cvx.real(freq_var[:idx_wc]) + cvx.imag(freq_var[:idx_wc]) * delta >= 0
+        ]
         )
         print(
             "Passivity constraint accounted for with wc={:f}".format(
@@ -616,15 +618,17 @@ def main():
     # plt.plot(imp_desired); plt.show()
 
     k_nom = 30
+    m_des = 1.5
+    b_des = 8
 
     # desired response from w3 to z1
     Pz_design = plantMdelta(
         E_gain=k_nom, wI=1.0, sys_type='33_mult_unt', m_int=0.1, N_in=1, N_out=2)
 
     noise_atten_func = Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [10, 0.1], [25, 0.010], [30, 0.008], [50, 0.004], [200, 0.002]], preview=True)
+        [[0.1, 0.1], [10, 0.1], [20, 0.02], [25, 0.01], [30, 0.01], [50, 0.005], [200, 0.002]], preview=True)
 
-    desired_sys = co.c2d(co.tf([2.5 * k_nom, 12 * k_nom, 0], [2.5, 12, 0 + k_nom]), Ts)
+    desired_sys = co.c2d(co.tf([m_des * k_nom, b_des * k_nom, 0], [m_des, b_des, 0 + k_nom]), Ts)
 
     def desired_sys_up(freqs, desired_sys=desired_sys):
         return desired_sys.freqresp(freqs)[0][0, 0]
@@ -666,13 +670,13 @@ def main():
         # list of ((idxi, idxj), function)
         # frequency-domain constraint: H_ij(e^jwT) <= func(w)
         'freq-constraints': [
-            [(1, 1), lambda omega: np.ones_like(omega)],
+            # [(1, 1), lambda omega: np.ones_like(omega)],
             [(0, 0), noise_atten_func],
         ],
 
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
-            [(0, 0), 20]
+            [(0, 0), 0.001, 20]
         ],
 
         # DC gain
