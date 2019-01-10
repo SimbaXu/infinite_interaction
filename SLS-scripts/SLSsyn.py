@@ -579,13 +579,16 @@ class Qsyn:
         -
 
         """
-        try:
+        # shape info
+        if 'ny' in specs:
             ny = specs['ny']
-            nu = specs['nu']
-        except:
+        else:
             ny = 1
+        if 'nu' in specs:
+            nu = specs['nu']
+        else:
             nu = 1
-        # setup
+
         Pzw, Pzu, Pyw, Pyu = get_partitioned_transfer_matrices(
             Pz_design, nu=nu, ny=ny)
 
