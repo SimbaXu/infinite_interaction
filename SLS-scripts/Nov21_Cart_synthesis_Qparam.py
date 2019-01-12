@@ -390,30 +390,32 @@ def Q_synthesis(Pz_design, specs):
 
     z = co.tf([1, 0], [1], Ts)
     freqs = specs['freqs']
+    all_costs = {'shape-time': []}
 
     # synthesis
     weight = cvx.Variable(specs['Ntaps'])
     constraints = []
 
     # objective: time-domain based objective
-    input_kind, io_idx, sys_desired, obj_weight = specs['objective']
-    imp_var = Ss.Qsyn.obtain_time_response_var(
-        weight, io_idx, T_sim, Pzw, Pzu, Pyw)
-    if input_kind == 'step':
-        imp_var = cvx.cumsum(imp_var)
-        out = co.step_response(sys_desired, T_sim)
-    elif input_kind == 'impulse':
-        out = co.impulse_response(sys_desired, T_sim)
-    elif input_kind == 'step_int':
-        imp_var = cvx.cumsum(cvx.cumsum(imp_var))
-        out = co.step_response(sys_desired, T_sim)
-        out_1 = np.cumsum(out[1], axis=1) * Ts
-        out = (0, out_1)  # TODO: bad hack, improve this
+    if 'shape-time' in specs:
+        for input_kind, io_idx, sys_desired, obj_weight in specs['shape-time']:
+            imp_var = Ss.Qsyn.obtain_time_response_var(
+                weight, io_idx, T_sim, Pzw, Pzu, Pyw)
+            if input_kind == 'step':
+                imp_var = cvx.cumsum(imp_var)
+                out = co.step_response(sys_desired, T_sim)
+            elif input_kind == 'impulse':
+                out = co.impulse_response(sys_desired, T_sim)
+            elif input_kind == 'step_int':
+                imp_var = cvx.cumsum(cvx.cumsum(imp_var))
+                out = co.step_response(sys_desired, T_sim)
+                out_1 = np.cumsum(out[1], axis=1) * Ts
+                out = (0, out_1)  # TODO: bad hack, improve this
 
-    imp_desired = out[1][0, :]
-    imp_desired[specs['resp_delay']:] = (imp_desired[:specs['Nsteps'] - specs['resp_delay']])
-    imp_desired[:specs['resp_delay']] = 0
-    cost1 = obj_weight * cvx.norm(imp_var - imp_desired)
+            imp_desired = out[1][0, :]
+            imp_desired[specs['resp_delay']:] = (imp_desired[:specs['Nsteps'] - specs['resp_delay']])
+            imp_desired[:specs['resp_delay']] = 0
+            all_costs['shape-time'].append(obj_weight * cvx.norm(imp_var - imp_desired))
 
     # frequency-domain constraints
     freq_vars = {}
@@ -500,9 +502,17 @@ def Q_synthesis(Pz_design, specs):
     imp_weight = np.ones(specs['Nsteps'])
     cost2 = specs['reg'] * cvx.norm1(weight * Ts)
     cost3 = specs['reg_diff_Q'] * cvx.norm(diffQ * weight * Ts, p=2)
-    cost4 = specs['reg_diff_Y'] * cvx.norm(diffY * imp_var)
-    cost5 = specs['reg'] * cvx.norm1(imp_var - imp_desired)
-    cost = cost1 + cost2 + cost3 + cost4 + cost5 + cost_inf
+    # cost4 = specs['reg_diff_Y'] * cvx.norm(diffY * imp_var)
+    cost4 = 0
+    # cost5 = specs['reg'] * cvx.norm1(imp_var - imp_desired)
+    cost5 = 0
+    cost = cost2 + cost3 + cost4 + cost5 + cost_inf
+
+    # sum all previous found cost
+    for key in all_costs:
+        for cost_ in all_costs[key]:
+            cost += cost_
+
     print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
     print(" -- Start solving")
@@ -511,7 +521,7 @@ def Q_synthesis(Pz_design, specs):
 
     print("cost: cost1={:f}, cost2={:f},\n      cost3={:f} cost4={:f}"
           "\n     cost5={:f} cost-inf={:f}" .format(
-              cost1.value, cost2.value, cost3.value, cost4.value, cost5.value,
+              0, cost2.value, cost3.value, 0, 0,
               cost_inf.value))
     print("Explanations:\n"
           "cost1: |y[n] - y_ideal[n]|_2 * weight + |y[n] - 1|_2 * weight_reg\n"
@@ -626,7 +636,9 @@ def main():
         'resp_delay': 2,  # number of delayed time step
 
         # different objective
-        'objective': ['step', (2, 2), desired_sys, 5],
+        'shape-time': [
+            ['step', (2, 2), desired_sys, 5]
+        ],
         'objective-Hinf': [
             [(2, 2), desired_sys_up, 1.0]
         ],
