@@ -381,9 +381,11 @@ def Q_synthesis(Pz_design, specs):
     -
 
     """
+    nu = specs['nu']
+    ny = specs['ny']
     # setup
     Pzw, Pzu, Pyw, Pyu = Ss.get_partitioned_transfer_matrices(
-        Pz_design, nu=1, ny=1)
+        Pz_design, nu=nu, ny=ny)
 
     Ts = Pz_design.dt
     T_sim = np.arange(specs['Nsteps']) * Ts
@@ -436,40 +438,42 @@ def Q_synthesis(Pz_design, specs):
         all_costs['reginf'] = cvx.norm(weight, 'inf') * specs['reginf']
 
     # frequency-domain constraints
-    for io_idx, func in specs['constraint-freq']:
-        if io_idx in freq_vars:
-            freq_var = freq_vars[io_idx]
-        else:
-            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
-            freq_vars[io_idx] = freq_var
+    if 'constraint-freq' in specs:
+        for io_idx, func in specs['constraint-freq']:
+            if io_idx in freq_vars:
+                freq_var = freq_vars[io_idx]
+            else:
+                freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+                freq_vars[io_idx] = freq_var
 
-        constraints.append(
-            cvx.abs(freq_var) <= func(freqs)
-        )
-        freq_vars[io_idx] = freq_var
+            constraints.append(
+                cvx.abs(freq_var) <= func(freqs)
+            )
+            freq_vars[io_idx] = freq_var
 
     # passivity
-    for io_idx, delta, wc in specs['passivity']:
-        if io_idx in freq_vars:
-            freq_var = freq_vars[io_idx]
-        else:
-            freq_var = Qsyn.obtain_freq_var(
-                weight, io_idx, freqs, Pzw, Pzu, Pyw)
-            freq_vars[io_idx] = freq_var
-        # freqs[idx_wc] is the smallest rotationl velocity that is greater than
-        # wc
-        idx_wc = 0
-        while freqs[idx_wc] < wc:
-            idx_wc += 1
-        assert(freqs[idx_wc] > wc)
-        constraints.extend([
-            cvx.real(freq_var[:idx_wc]) >= 0,
-            cvx.real(freq_var[:idx_wc]) + cvx.imag(freq_var[:idx_wc]) * delta >= 0
-        ]
-        )
-        print(
-            "Passivity constraint accounted for with wc={:f}".format(
-                freqs[idx_wc]))
+    if 'passivity' in specs:
+        for io_idx, delta, wc in specs['passivity']:
+            if io_idx in freq_vars:
+                freq_var = freq_vars[io_idx]
+            else:
+                freq_var = Qsyn.obtain_freq_var(
+                    weight, io_idx, freqs, Pzw, Pzu, Pyw)
+                freq_vars[io_idx] = freq_var
+            # freqs[idx_wc] is the smallest rotationl velocity that is greater than
+            # wc
+            idx_wc = 0
+            while freqs[idx_wc] < wc:
+                idx_wc += 1
+            assert(freqs[idx_wc] > wc)
+            constraints.extend([
+                cvx.real(freq_var[:idx_wc]) >= 0,
+                cvx.real(freq_var[:idx_wc]) + cvx.imag(freq_var[:idx_wc]) * delta >= 0
+            ]
+            )
+            print(
+                "Passivity constraint accounted for with wc={:f}".format(
+                    freqs[idx_wc]))
 
     # dc-gain
     for io_idx, gain in specs['dc-gain']:
@@ -625,9 +629,10 @@ def main():
         return desired_sys.freqresp(freqs)[0][0, 0]
 
     design_dict = {
+        'ny': 1,
+        'nu': 1,
         'Ntaps': 800,
         'Nsteps': 1000,
-        # 'freqs': np.logspace(-2, np.log10(np.pi / Ts), 1000),
         'freqs': np.linspace(1e-2, np.pi / Ts, 1000),
 
         # different objective
