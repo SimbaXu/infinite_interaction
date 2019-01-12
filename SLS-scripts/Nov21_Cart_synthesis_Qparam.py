@@ -390,13 +390,12 @@ def Q_synthesis(Pz_design, specs):
 
     z = co.tf([1, 0], [1], Ts)
     freqs = specs['freqs']
-    all_costs = {'shape-time': []}
-
-    # synthesis
+    all_costs = {'shape-time': [], 'shape-freq': [], 'reg2': None, 'reginf': None}
+    freq_vars = {}
     weight = cvx.Variable(specs['Ntaps'])
     constraints = []
 
-    # objective: time-domain based objective
+    # frequency response shaping
     if 'shape-time' in specs:
         for input_kind, io_idx, sys_desired, obj_weight in specs['shape-time']:
             imp_var = Ss.Qsyn.obtain_time_response_var(
@@ -413,29 +412,41 @@ def Q_synthesis(Pz_design, specs):
                 out = (0, out_1)  # TODO: bad hack, improve this
 
             imp_desired = out[1][0, :]
-            imp_desired[specs['resp_delay']:] = (imp_desired[:specs['Nsteps'] - specs['resp_delay']])
-            imp_desired[:specs['resp_delay']] = 0
+            imp_desired[specs['shape-time-delay']:] = (imp_desired[:specs['Nsteps'] - specs['shape-time-delay']])
+            imp_desired[:specs['shape-time-delay']] = 0
             all_costs['shape-time'].append(obj_weight * cvx.norm(imp_var - imp_desired))
 
+    # frequency response shaping
+    if 'shape-freq' in specs:
+        for io_idx, sys_desired, norm, obj_weight in specs['shape-freq']:
+            if io_idx in freq_vars:
+                freq_var = freq_vars[io_idx]
+            else:
+                freq_var = Qsyn.obtain_freq_var(
+                    weight, io_idx, freqs, Pzw, Pzu, Pyw)
+                freq_vars[io_idx] = freq_var
+            freq_desired = sys_desired.freqresp(freqs)[0][0, 0]
+            all_costs['shape-freq'].append(
+                obj_weight * cvx.norm(freq_var - freq_desired, norm))
+
+    if 'reg2' in specs:
+        all_costs['reg2'] = cvx.norm(weight, 2) * specs['reg2']
+
+    if 'reginf' in specs:
+        all_costs['reginf'] = cvx.norm(weight, 'inf') * specs['reginf']
+
     # frequency-domain constraints
-    freq_vars = {}
-    for io_idx, func in specs['freq-constraints']:
-        freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+    for io_idx, func in specs['constraint-freq']:
+        if io_idx in freq_vars:
+            freq_var = freq_vars[io_idx]
+        else:
+            freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+            freq_vars[io_idx] = freq_var
+
         constraints.append(
             cvx.abs(freq_var) <= func(freqs)
         )
         freq_vars[io_idx] = freq_var
-
-    # min H-infinity norm
-    cost_inf = 0
-    for io_idx, func, obj_weight in specs['objective-Hinf']:
-        if io_idx in freq_vars:
-            freq_var = freq_vars[io_idx]
-        else:
-            freq_var = Qsyn.obtain_freq_var(
-                weight, io_idx, freqs, Pzw, Pzu, Pyw)
-            freq_vars[io_idx] = freq_var
-        cost_inf += obj_weight * cvx.norm(freq_var - func(freqs), 'inf')
 
     # passivity
     for io_idx, delta, wc in specs['passivity']:
@@ -490,28 +501,14 @@ def Q_synthesis(Pz_design, specs):
     #     cvx.imag(H00_freqrp[:omega_ths_idx]) >= 0
     # )
 
-    # penalize rapid changes in Q
-    diffQ = np.zeros((specs['Ntaps'] - 1, specs['Ntaps']))
-    for i in range(specs['Ntaps'] - 1):
-        diffQ[i, i: i + 2] = [1.0, -1.0]
-
-    diffY = np.zeros((specs['Nsteps'] - 1, specs['Nsteps']))
-    for i in range(specs['Nsteps'] - 1):
-        diffY[i, i: i + 2] = [1.0, -1.0]
-
-    imp_weight = np.ones(specs['Nsteps'])
-    cost2 = specs['reg'] * cvx.norm1(weight * Ts)
-    cost3 = specs['reg_diff_Q'] * cvx.norm(diffQ * weight * Ts, p=2)
-    # cost4 = specs['reg_diff_Y'] * cvx.norm(diffY * imp_var)
-    cost4 = 0
-    # cost5 = specs['reg'] * cvx.norm1(imp_var - imp_desired)
-    cost5 = 0
-    cost = cost2 + cost3 + cost4 + cost5 + cost_inf
-
     # sum all previous found cost
+    cost = 0
     for key in all_costs:
-        for cost_ in all_costs[key]:
-            cost += cost_
+        if type(all_costs[key]) == list:
+            for cost_ in all_costs[key]:
+                cost += cost_
+        elif all_costs[key] is not None:  # scalar cost
+            cost += all_costs[key]
 
     print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
@@ -519,27 +516,26 @@ def Q_synthesis(Pz_design, specs):
     prob.solve(verbose=True)
     assert(prob.status == 'optimal')
 
-    print("cost: cost1={:f}, cost2={:f},\n      cost3={:f} cost4={:f}"
-          "\n     cost5={:f} cost-inf={:f}" .format(
-              0, cost2.value, cost3.value, 0, 0,
-              cost_inf.value))
-    print("Explanations:\n"
-          "cost1: |y[n] - y_ideal[n]|_2 * weight + |y[n] - 1|_2 * weight_reg\n"
-          "cost2: |Q|_1\n"
-          "cost3: |DIFF * Q|_2\n"
-          "cost4: |DIFF * y[n]|_2 (for smooth movement)\n"
-          "cost5: |y[n] - y_des[n]|_1\n"
-          "where DIFF is the difference matrix.")
+    # TODO: sort key
+    print(" cost report\n ---------- ")
+    keys_sorted = sorted(all_costs.keys())
+    for key in keys_sorted:
+        if type(all_costs[key]) == list:
+            for i, cost_ in enumerate(all_costs[key]):
+                print(" > {:} nb. {:d}: {:f}".format(key, i, cost_.value))
+        elif all_costs[key] is not None:
+            print(" > {:}         : {:f}".format(key, all_costs[key].value))
+        else:
+            print(" > {:}         : None".format(key))
 
     # debug
     fig, axs = plt.subplots(2, 2)
     axs[0, 0].plot(imp_var.value, label="imp_var")
     axs[0, 0].plot(imp_desired, label="imp_desired")
-    axs[0, 0].plot(imp_weight * 0.004, label="scaled weight")
     axs[0, 0].legend()
     axs[0, 1].plot(weight.value, label="weight")
     _i = 0
-    for io_idx, func in specs['freq-constraints']:
+    for io_idx, func in specs['constraint-freq']:
         freq_var = freq_vars[io_idx]
         axs[1, 0].plot(
             freqs, np.abs(freq_var.value), label="H{:}".format(io_idx), c='C{:d}'.format(_i))
@@ -633,43 +629,27 @@ def main():
         'Nsteps': 1000,
         # 'freqs': np.logspace(-2, np.log10(np.pi / Ts), 1000),
         'freqs': np.linspace(1e-2, np.pi / Ts, 1000),
-        'resp_delay': 2,  # number of delayed time step
 
         # different objective
+        'shape-time-delay': 2,  # number of delayed time step
         'shape-time': [
             ['step', (2, 2), desired_sys, 5]
         ],
-        'objective-Hinf': [
-            [(2, 2), desired_sys_up, 1.0]
+        'shape-freq': [
+            [(2, 2), desired_sys, 'inf', 1.0]
         ],
-
-        # a quadratic regulator objective:
-        # (input_kind, input indices, target level, objective weight)
-        # 'objective-qreg': ['step_int', (0, 2), 1.0, 1.0],
-
-        # 'objective2': ['inf', (0, 2), co.c2d(co.tf([50, 0], [2.5, 21, 0 + 50]), Ts)]
-        # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [3.5, 21, 0 + 50]), Ts)],
-        # 'objective': ['step', (0, 2), co.c2d(co.tf([50, 0], [2., 25, 0 + 50]), Ts)],
-        # frequencies to apply constraint on
-
-        # 'objective': ['impulse', (0, 0), co.c2d(co.tf([1, 0], [2, 18, 5]), Ts)],
-        # the impulse-based objective is dropped in favour of the step objective.
-        # The reason is that it is found that the step objectively
-        # leads to better performance.
-
-        # cost different paramerter
-
-        # regulation parameter
-        'reg': 0e-2,
-        'reg_diff_Q': 0e-2,
-        'reg_diff_Y': 0,
-
-        # list of ((idxi, idxj), function)
-        # frequency-domain constraint: H_ij(e^jwT) <= func(w)
-        'freq-constraints': [
+        'constraint-freq': [
             # [(1, 1), lambda omega: np.ones_like(omega)],
             [(0, 0), noise_atten_func],
         ],
+
+        # regulation: reg2 * ||Q||_2 + reginf * ||Q||_inf
+        'reg2': 0,
+        'reginf': 0,
+
+        # list of ((idxi, idxj), function)
+        # frequency-domain constraint: H_ij(e^jwT) <= func(w)
+
 
         # passivity: Re[H_ij(e^jwT)] >= 0, for all w <= w_c
         'passivity': [
