@@ -397,38 +397,23 @@ def Q_synthesis(Pz_design, specs):
 
     # objective: time-domain based objective
     input_kind, io_idx, sys_desired, obj_weight = specs['objective']
-    imp_var = Qsyn.obtain_time_response_var(
-        weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
+    imp_var = Ss.Qsyn.obtain_time_response_var(
+        weight, io_idx, T_sim, Pzw, Pzu, Pyw)
     if input_kind == 'step':
+        imp_var = cvx.cumsum(imp_var)
         out = co.step_response(sys_desired, T_sim)
     elif input_kind == 'impulse':
         out = co.impulse_response(sys_desired, T_sim)
     elif input_kind == 'step_int':
+        imp_var = cvx.cumsum(cvx.cumsum(imp_var))
         out = co.step_response(sys_desired, T_sim)
         out_1 = np.cumsum(out[1], axis=1) * Ts
         out = (0, out_1)  # TODO: bad hack, improve this
+
     imp_desired = out[1][0, :]
     imp_desired[specs['resp_delay']:] = (imp_desired[:specs['Nsteps'] - specs['resp_delay']])
     imp_desired[:specs['resp_delay']] = 0
     cost1 = obj_weight * cvx.norm(imp_var - imp_desired)
-
-    # objective: time-domain quadratic regulator
-    if 'objective-qreg' in specs:
-        input_kind, io_idx, target, obj_weight = specs['objective-qreg']
-        imp_var = Qsyn.obtain_time_response_var(
-            weight, io_idx, input_kind, T_sim, Pzw, Pzu, Pyw)
-        if input_kind == 'step':
-            out = co.step_response(sys_desired, T_sim)
-        elif input_kind == 'impulse':
-            out = co.impulse_response(sys_desired, T_sim)
-        elif input_kind == 'step_int':
-            out = co.step_response(sys_desired, T_sim)
-            out_1 = np.cumsum(out[1], axis=1) * Ts
-            out = (0, out_1)  # TODO: bad hack, improve this
-        cost1 += obj_weight * cvx.norm(imp_var - target)
-
-        # no overshoot constraint
-        constraints.append(imp_var <= target)
 
     # frequency-domain constraints
     freq_vars = {}
@@ -476,8 +461,8 @@ def Q_synthesis(Pz_design, specs):
     # dc-gain
     for io_idx, gain in specs['dc-gain']:
         # only w=0 is needed
-        imp_var_ = Qsyn.obtain_time_response_var(
-            weight, io_idx, 'impulse', T_sim, Pzw, Pzu, Pyw)
+        imp_var_ = Ss.Qsyn.obtain_time_response_var(
+            weight, io_idx, T_sim, Pzw, Pzu, Pyw)
 
         constraints.append(
             cvx.sum(imp_var_) == gain
@@ -664,8 +649,8 @@ def main():
 
         # regulation parameter
         'reg': 0e-2,
-        'reg_diff_Q': 1e-2,
-        'reg_diff_Y': 1,
+        'reg_diff_Q': 0e-2,
+        'reg_diff_Y': 0,
 
         # list of ((idxi, idxj), function)
         # frequency-domain constraint: H_ij(e^jwT) <= func(w)
