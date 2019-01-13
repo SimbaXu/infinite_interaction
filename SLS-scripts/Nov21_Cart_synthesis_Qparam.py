@@ -371,7 +371,6 @@ class Qsyn:
 
         return interpolate_func
 
-
 def Q_synthesis(Pz_design, specs):
     """Synthesize a controller for the given plant.
 
@@ -485,26 +484,6 @@ def Q_synthesis(Pz_design, specs):
             cvx.sum(imp_var_) == gain
         )
 
-    # # noise attenuation:
-    # constraints.append(
-    #     cvx.abs(H00_freqrp) <= 2e-2
-    # )
-
-    # distance moved should never be negative (not effective, hence, not in use)
-    # dist_mat = np.zeros((Nstep, Nstep))
-    # for i in range(Nstep):
-        # dist_mat[i, :i] = 1.0
-    # constraints.append(dist_mat * imp_var >= 0)
-
-    # zero distance travelled  (not effective) (this constraint is satisfied by definition)
-    # constraints.append(cvx.sum(imp_var) == 0)
-
-    # # good (positive phase lag) passive until w = 4 (not effective)
-    # omega_ths_idx = np.argmin(np.abs(freqs - 8.0))
-    # constraints.append(
-    #     cvx.imag(H00_freqrp[:omega_ths_idx]) >= 0
-    # )
-
     # sum all previous found cost
     cost = 0
     for key in all_costs:
@@ -516,12 +495,13 @@ def Q_synthesis(Pz_design, specs):
 
     print(" -- Form cvxpy Problem instance")
     prob = cvx.Problem(cvx.Minimize(cost), constraints)
-    print(" -- Start solving")
+
+    print(" -- Solve instance")
     prob.solve(verbose=True)
     assert(prob.status == 'optimal')
 
     # TODO: sort key
-    print(" cost report\n ---------- ")
+    print(" -- Cost report\n")
     keys_sorted = sorted(all_costs.keys())
     for key in keys_sorted:
         if type(all_costs[key]) == list:
@@ -553,14 +533,9 @@ def Q_synthesis(Pz_design, specs):
         axs[i, j].set_yscale('log')
     plt.show()
 
-    # report result
-    # form individual filter
+    # return the weight found
     taps = weight.value * Ts
-    Q_fir = co.tf(taps, [1] + [0] * (specs['Ntaps'] - 1), Ts)
-    Q = Ss.tf2ss(Q_fir, minreal=True, via_matlab=True)
-    K = co.feedback(Q, Pyu, sign=-1)
-
-    return K, {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
+    return {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
 
 
 def desired_impulse(m=1, b=1, k=1, Nstep=600, Ts=0.008):
@@ -668,13 +643,13 @@ def main():
     }
 
     if input("Design controller?") == 'y':
-        K_Qparam, data = Q_synthesis(Pz_design, design_dict)
+        syn_data = Ss.Qsyn.Q_synthesis(Pz_design, design_dict)
 
     if input("Write controller? y/[n]") == 'y':
         print_controller(
             "../config/Nov21_Cart_synthesis_Qparam_synres.yaml",
-            data['Qtaps'],
-            data['zPyu'])
+            syn_data['Qtaps'],
+            syn_data['zPyu'])
 
     analysis_dict = {
         'row_col': (3, 2),
@@ -704,16 +679,23 @@ def main():
         E_gain=20, wI=1.0, sys_type='33_mult_unt', m_int=m_test, N_in=1, N_out=2)
 
     if input("Analyze stuffs? y/[n]") == 'y':
+        # form Q param controller (state-space)
+        K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(
+            syn_data['Qtaps'], syn_data['Pyu'])
+
+        # start analysis
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 50}
-        analysis(Pz_nom, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis(Pz_nom, K_Qparam_ss, analysis_dict, controller_name='Qparam')
+
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 100}
         analysis(
             Pz_contracted,
-            K_Qparam,
+            K_Qparam_ss,
             analysis_dict,
             controller_name='Qparam')
+
         analysis_dict['virtual_sys'] = {'m': 2.5, 'b': 12, 'k': 0, 'k_E': 20}
-        analysis(Pz_relaxed, K_Qparam, analysis_dict, controller_name='Qparam')
+        analysis(Pz_relaxed, K_Qparam_ss, analysis_dict, controller_name='Qparam')
 
     K_ = {
         'ad_light': co.c2d(co.tf([1], [2.5, 12, 0]), Ts),
@@ -734,13 +716,13 @@ def main():
     if input("Write controller? y/[n]") == 'y':
         print_controller(
             "../config/Nov21_Cart_synthesis_Qparam_synres.yaml",
-            data['Qtaps'],
-            data['zPyu'])
+            syn_data['Qtaps'],
+            syn_data['zPyu'])
 
     if input("Dump Q controller with pickle? y/[n]") == 'y':
         import pickle
         with open('Nov21_ctrl.pkl', 'wb') as f:
-            pickle.dump(K_Qparam, f, -1)
+            pickle.dump(K_Qparam_ss, f, -1)
 
     import IPython
     if IPython.get_ipython() is None:
