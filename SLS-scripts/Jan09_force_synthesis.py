@@ -81,8 +81,8 @@ if __name__ == '__main__':
     if input("Save controller for later analysis?") == "y":
         K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(
             data['Qtaps'], data['Pyu'])
-        import ipdb; ipdb.set_trace()
-        np.savez("Jan09_K_ss.npz", A=K_Qparam_ss.A)
+        np.savez("Jan09_K_ss_params.npz", A=K_Qparam_ss.A, B=K_Qparam_ss.B,
+                 C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
         
 
     import IPython
