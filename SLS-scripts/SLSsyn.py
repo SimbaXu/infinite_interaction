@@ -438,6 +438,12 @@ def get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1):
 
 
 def step_responses(P, Tmax):
+    """ Simulate all inputs of plant P and plot.
+
+    Args:
+        P: MIMO plant
+        Tmax: Max duration.
+    """
     Ts = P.dt
     tsim = np.arange(int(Tmax / Ts)) * Ts
     fig, axs = plt.subplots(P.outputs, P.inputs, sharex=True)
@@ -452,7 +458,7 @@ class Qsyn:
     """ Collection of sub-routines used in Q-parametriation based synthesis.
     """
     @staticmethod
-    def obtain_time_response_var(weight, io_idx, T_sim, Pzw, Pzu, Pyw):
+    def obtain_time_response_var(weight: cvx.Variable,  io_idx: tuple, T_sim: np.ndarray, Pzw: co.TransferFunction, Pzu: co.TransferFunction, Pyw: co.TransferFunction) -> dict:
         """Return the (i, j) indexed response of the closed-loop response in the time-domain.
 
         Weight Convention: The basis contains delayed impulses. 
@@ -475,6 +481,16 @@ class Qsyn:
         Hence, the number of weights equals the product of the number
         of taps, ny and nu.
 
+        Args:
+            weight: cvxpy Variable containing the taps.
+            io_idx: (output, input) indices.
+            T_sim: Simulation time indices.
+            Pzw: Plant block transfer functions.
+            Pzu: Plant block transfer functions.
+            Pyw: Plant block transfer functions.
+
+        Returns:
+            dictionary of result
         """
         # Post checks
         if not np.allclose(np.diff(T_sim), Pzw.dt):
@@ -498,7 +514,6 @@ class Qsyn:
 
         basic_resp = None
         resp_mat = []
-        delay_steps = 0
         for k in range(weight.shape[0]):
             iQ = int((k / Ntaps) / ny)  # current row on Q matrix
             jQ = int((k / Ntaps) % ny)  # current col on Q matrix
@@ -523,12 +538,19 @@ class Qsyn:
             raise ValueError("Unknown weight type")
         return resp
 
-    def obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw):
+    @staticmethod
+    def obtain_freq_var(weight: cvx.Variable, io_idx: tuple, freqs: np.ndarray, Pzw: co.TransferFunction, Pzu: co.TransferFunction, Pyw: co.TransferFunction) -> dict:
         """Return a frequency-response variable.
 
         For convention on weight, see :func:`obtain_time_response_var`.
 
-
+        Args:
+            weight: cvxpy Variable containing the taps.
+            io_idx: (output, input) indices.
+            freqs: Frequencies at which to evaluate the transfer function.
+            Pzw: Plant block transfer functions.
+            Pzu: Plant block transfer functions.
+            Pyw: Plant block transfer functions.
         """
         # Post checks
         if weight.shape[0] % (Pzu.inputs * Pyw.outputs) != 0:
@@ -571,12 +593,20 @@ class Qsyn:
             raise ValueError("Unknown weight type")
         return resp
 
-    def form_Q_feedback_controller_ss(taps, Pyu):
+    @staticmethod
+    def form_Q_feedback_controller_ss(taps: np.ndarray, Pyu: co.TransferFunction) -> co.StateSpace:
         """Return a state-space realization of the Q controller.
 
         In Q-parametrization theory, the optimal controller given
         paramtrization Q is given as the feedback interconnection
         between Q and Pyu.
+
+        Args:
+            taps: All taps of Q, which are FIRs arranged in array.
+            Pyu: Block transfer function of the plant.
+
+        Returns:
+            K_ss: Resulting state-space controller.
         """
         nu = Pyu.inputs
         ny = Pyu.outputs
@@ -584,7 +614,6 @@ class Qsyn:
         Ntaps = int(taps.shape[0] / (nu * ny))
 
         # form Q transfer function from the taps
-        # TODO: handle cases when nu or ny is different from 1?
         Q_fir_list = []
         for i in range(nu):
             Q_fir_list.append([])
@@ -630,14 +659,18 @@ class Qsyn:
 
         return interpolate_func
 
-    def Q_synthesis(Pz_design, specs):
+    @staticmethod
+    def Q_synthesis(Pz_design: co.TransferFunction, specs: dict) -> dict:
         """Synthesize a controller for the given plant.
 
         A dictionary is used to supply specification to the synthesizer.
 
-        [recipe]: A list of lists.
-        -
+        Args:
+            Pz_design: Plant for controller design.
+            specs: Specifications as a dictionary.
 
+        Returns:
+            Dictionary containing optimization result.
         """
         nu = specs['nu']
         ny = specs['ny']
