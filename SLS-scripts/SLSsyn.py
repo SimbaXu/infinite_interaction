@@ -684,30 +684,68 @@ class Qsyn:
         z = co.tf([1, 0], [1], Ts)
         freqs = specs['freqs']
         all_costs = {'shape-time': [], 'shape-freq': [], 'reg2': None, 'reginf': None}
+        # for book-keeping only
         freq_vars = {}
+        time_vars = {}
+        misc = {}
+
         weight = cvx.Variable(specs['Ntaps'])
         constraints = []
+        if 'additional-time-vars' in specs:
+            for input_kind, io_idx in specs['additional-time-vars']:
+                # time-var
+                if (io_idx, input_kind) not in time_vars:
+                    imp_var = Qsyn.obtain_time_response_var(
+                        weight, io_idx, T_sim, Pzw, Pzu, Pyw)
+                    if input_kind == 'step':
+                        imp_var = cvx.cumsum(imp_var)
+                    elif input_kind == 'step_int':
+                        imp_var = cvx.cumsum(cvx.cumsum(imp_var))
+
+                    time_vars[(io_idx, input_kind)] = imp_var
+
+        if 'additional-freq-vars' in specs:
+            # func: a function that returns magnitude
+            for io_idx in specs['additional-freq-vars']:
+                if io_idx in freq_vars:
+                    freq_var = freq_vars[io_idx]
+                else:
+                    freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
+                    freq_vars[io_idx] = freq_var
 
         # frequency response shaping
         if 'shape-time' in specs:
             for input_kind, io_idx, sys_desired, obj_weight in specs['shape-time']:
-                imp_var = Qsyn.obtain_time_response_var(
-                    weight, io_idx, T_sim, Pzw, Pzu, Pyw)
+                # time-var
+                if (io_idx, input_kind) in time_vars:
+                    imp_var = time_vars[(io_idx, input_kind)]
+                else:
+                    imp_var = Qsyn.obtain_time_response_var(weight, io_idx, T_sim, Pzw, Pzu, Pyw)
+                    if input_kind == 'step':
+                        imp_var = cvx.cumsum(imp_var)
+                    elif input_kind == 'step_int':
+                        imp_var = cvx.cumsum(cvx.cumsum(imp_var))
+
+                    time_vars[(io_idx, input_kind)] = imp_var
+
+                # desired time-var
                 if input_kind == 'step':
-                    imp_var = cvx.cumsum(imp_var)
                     out = co.step_response(sys_desired, T_sim)
                 elif input_kind == 'impulse':
                     out = co.impulse_response(sys_desired, T_sim)
                 elif input_kind == 'step_int':
-                    imp_var = cvx.cumsum(cvx.cumsum(imp_var))
                     out = co.step_response(sys_desired, T_sim)
                     out_1 = np.cumsum(out[1], axis=1) * Ts
                     out = (0, out_1)  # TODO: bad hack, improve this
 
                 imp_desired = out[1][0, :]
-                imp_desired[specs['shape-time-delay']:] = (imp_desired[:specs['Nsteps'] - specs['shape-time-delay']])
+                imp_desired[specs['shape-time-delay']:] = (
+                    imp_desired[:specs['Nsteps'] - specs['shape-time-delay']])
                 imp_desired[:specs['shape-time-delay']] = 0
                 all_costs['shape-time'].append(obj_weight * cvx.norm(imp_var - imp_desired))
+
+                # bookkeeping
+                time_vars[(io_idx, input_kind, 'desired')] = imp_desired
 
         # frequency response shaping
         if 'shape-freq' in specs:
@@ -730,6 +768,7 @@ class Qsyn:
 
         # frequency-domain constraints
         if 'constraint-freq' in specs:
+            # func: a function that returns magnitude
             for io_idx, func in specs['constraint-freq']:
                 if io_idx in freq_vars:
                     freq_var = freq_vars[io_idx]
@@ -737,8 +776,14 @@ class Qsyn:
                     freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
                     freq_vars[io_idx] = freq_var
 
+                # obtain magnitude upper-bound
+                if type(func) == co.TransferFunction:
+                    mag_upbnd = func.freqresp(freqs)[0][0, 0]
+                else:
+                    mag_upbnd = func(freqs)
+
                 constraints.append(
-                    cvx.abs(freq_var) <= func(freqs)
+                    cvx.abs(freq_var) <= mag_upbnd
                 )
                 freq_vars[io_idx] = freq_var
 
@@ -769,11 +814,10 @@ class Qsyn:
         # dc-gain
         for io_idx, gain in specs['dc-gain']:
             # only w=0 is needed
-            imp_var_ = Qsyn.obtain_time_response_var(
-                weight, io_idx, T_sim, Pzw, Pzu, Pyw)
-
+            imp_var = Qsyn.obtain_time_response_var(weight, io_idx, T_sim, Pzw, Pzu, Pyw)
+            time_vars[(io_idx, 'impulse')] = imp_var
             constraints.append(
-                cvx.sum(imp_var_) == gain
+                cvx.sum(imp_var) == gain
             )
 
         # sum all previous found cost
@@ -792,7 +836,6 @@ class Qsyn:
         prob.solve(verbose=True)
         assert(prob.status == 'optimal')
 
-        # TODO: sort key
         print(" -- Cost report\n")
         keys_sorted = sorted(all_costs.keys())
         for key in keys_sorted:
@@ -805,27 +848,21 @@ class Qsyn:
                 print(" > {:}         : None".format(key))
         print("\n -- Finish reporting cost")
 
-        # debug
-        fig, axs = plt.subplots(2, 2)
-        axs[0, 0].plot(imp_var.value, label="imp_var")
-        axs[0, 0].plot(imp_desired, label="imp_desired")
-        axs[0, 0].legend()
-        axs[0, 1].plot(weight.value, label="weight")
-        _i = 0
-        for io_idx, func in specs['constraint-freq']:
-            freq_var = freq_vars[io_idx]
-            axs[1, 0].plot(
-                freqs, np.abs(freq_var.value), label="H{:}".format(io_idx), c='C{:d}'.format(_i))
-            axs[1, 0].plot(
-                freqs, func(freqs), '--', c='C{:d}'.format(_i))
-            _i += 1
-        for i, j in [(1, 0), (1, 1)]:
-            axs[i, j].grid()
-            axs[i, j].legend()
-            axs[i, j].set_xscale('log')
-            axs[i, j].set_yscale('log')
-        plt.show()
-
         # return the weight found
         taps = weight.value * Ts
-        return {'Qtaps': taps, 'Pyu': Pyu, 'zPyu': z * Pyu}
+
+        # form identity matrix Iz
+        Iz_list = np.zeros((ny, ny)).tolist()
+        for i in range(ny):
+            Iz_list[i][i] = z
+        Iz = tf_blocks(Iz_list, Ts)
+        zPyu = Iz * Pyu
+        res = {'Qtaps': taps, 'Pyu': Pyu,
+               'zPyu': zPyu,
+               'time-vars': time_vars,
+               'freq-vars': freq_vars,
+               'misc': misc,
+               'Tsim': T_sim
+               
+        }
+        return res
