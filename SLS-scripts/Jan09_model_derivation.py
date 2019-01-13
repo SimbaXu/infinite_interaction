@@ -5,6 +5,14 @@ import control as co
 
 
 class PlantV1:
+    gen_exp_file = "PlantV1_gen_exp"
+    z_idx_map = {
+        0: 'fm', 1: 'x', 2: 'xro'
+    }
+    w_idx_map = {
+        0: 'fd', 1: 'xe', 2: 'n', 3: 'fro'
+    }
+
     @staticmethod
     def plant(tau_R1=0.0437, ke=10e3, br=10, kr=500, mr=0.05, Ts=0.008):
         """
@@ -23,29 +31,11 @@ class PlantV1:
             return co.c2d(exp, Ts)
         R1 = 1 / (1 + tau_R1 * s)
 
-        with open("Jan09_generated_expression", 'r') as f:
+        with open(PlantV1.gen_exp_file, 'r') as f:
             expr_string = f.read()
         exec(expr_string)
         P = Ss.tf_blocks(locals()["Plist"])
-
-        # P = Ss.tf_blocks([
-        #     [0, z ** (-2) * co.c2d(ke*(br*s + kr)/(br*s + ke + kr + mr*s**2), Ts),
-        #      0, z ** (-2) * dist(-(br*s + kr)/(br*s + ke + kr + mr*s**2)),
-        #      z ** (-4) * co.c2d(-R1*(br*ke*s + br*mr*s**3 + ke*kr + kr*mr*s**2)/(br*s + ke + kr + mr*s**2), Ts)],
-
-        #     [0, 0, 0, 0, z ** (-2) * dist(R1)],
-            
-        #     [0, dist(-(br*s + kr + mr*s**2)/(br*s + ke + kr + mr*s**2)),
-        #      0, dist(-1/(br*s + ke + kr + mr*s**2)),                                  R1*(br*s + kr)*exp(-2*Ts)/(br*s + ke + kr + mr*s**2)],
-        #     [1, 0, 0, 0, 0],
-
-        #     [0, z ** (-2) * co.c2d(ke*(br*s + kr)/(br*s + ke + kr + mr*s**2), Ts),
-        #      1, z ** (-2) * dist(-(br*s + kr)/(br*s + ke + kr + mr*s**2)),
-        #      z ** (-4) * co.c2d(-R1*(br*ke*s + br*mr*s**3 + ke*kr + kr*mr*s**2)/(br*s + ke + kr + mr*s**2), Ts)]
-        # ])
-
         return P
-
 
     @staticmethod
     def derive():
@@ -111,7 +101,7 @@ class PlantV1:
         P
 
         string_expr = print_symmatrix_as_list(P)
-        with open("Jan09_generated_expression", 'w') as f:
+        with open(PlantV1.gen_exp_file, 'w') as f:
             f.write(string_expr)
 
         print(string_expr)
@@ -155,20 +145,22 @@ def print_symmatrix_as_list(P):
                     # compute the power raised by the exponential part
                     power = round(sym.log(exp_part, sym.exp(Ts)).evalf(subs={Ts: 1}))
                     output += "z ** ({:d}) * dist({:})\n".format(power, factored_args[exp_part])
+
     output += "Plist = [\n"
     for i in range(P.shape[0]):
         output += "["
         for j in range(P.shape[1]):
             output += "P{:d}{:d}, ".format(i, j)
-        output += "]\n"
+        output += "],\n"
     output += "]"
 
-            
     if fail:
         output = "CONVERSION FAILS. DO NOT USE\n" + output
     return output
 
+
 if __name__ == "__main__":
-    # PlantV1.derive()
-    PlantV1.plant()
+    PlantV1.derive()
+    # PlantV1.plant()
+
 

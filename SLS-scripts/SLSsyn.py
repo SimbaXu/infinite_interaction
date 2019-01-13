@@ -862,7 +862,165 @@ class Qsyn:
                'time-vars': time_vars,
                'freq-vars': freq_vars,
                'misc': misc,
-               'Tsim': T_sim
-               
-        }
+               'Tsim': T_sim}
         return res
+
+
+def analysis(plant, controller, analysis_dict, controller_name='noname',
+             in_idxname=range(100), out_idxname=range(100)):
+    """A basic analysis of a plant/controller pair.
+
+    The plant and controller are first combined using a Linear
+    Fractional Transformation to form the closed-loop mapping from
+    exogeneous input to exogeneous output. Analysis are then performed
+    on this closed-loop mapping.
+
+    Signals are enumerated from 0.
+
+    Args:
+        plant: A (3 outputs, 2 inputs) discrete-time LTI system.
+        controller: A (1 output, 1 input) discrete-time LTI system.
+        analysis_dict: A dictionary that contains descriptions of the
+            different analyses to conduct.
+
+    """
+    H = lft(plant, controller)
+    nu = controller.outputs
+    ny = controller.inputs
+    Pzw, Pzu, Pyw, Pyu = get_partitioned_transfer_matrices(
+        plant, nu=nu, ny=ny)
+    Ts = plant.dt
+
+    # stability
+    w, q = np.linalg.eig(H.A)
+    wmax = w[np.argmax(np.abs(w))]
+    if np.abs(wmax) > 1:
+        print(" -- Closed-loop system UNSTABLE. w_max={:}".format(wmax))
+    else:
+        print(" -- Closed-loop system STABLE. w_max={:}".format(wmax))
+
+    Nsteps = 800
+    freqs = analysis_dict['freqs']
+    T_sim = np.arange(Nsteps) * Ts
+    nrow, ncol = analysis_dict['row_col']
+    fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
+
+    for entry in analysis_dict['recipe']:
+        i, j = entry[0], entry[1]
+
+        plot_type = entry[2]
+
+        if plot_type == 'q':
+            Q = co.feedback(controller, Pyu, sign=1)
+            _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * Ts)
+            Q_imp = Q_imp.flatten()
+            axs[i, j].plot(T_sim, Q_imp)
+            axs[i, j].set_title(r"$Q (\delta[n]) $")
+
+        elif plot_type == 'step':
+            # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.step_response(H[output_idx, input_idx], T_sim)
+                axs[i, j].plot(T_sim, y_step[0, :],
+                               label='step resp. {:}, {:}'.format(
+                                   out_idxname[output_idx],
+                                   in_idxname[input_idx]))
+                axs[i, j].set_title('Step response')
+
+        elif plot_type == 'impulse':
+            # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.impulse_response(
+                    H[output_idx, input_idx], T_sim)
+                axs[i, j].plot(T_sim, y_step[0, :],
+                               label='imp. resp. {:}, {:}'.format(
+                                   out_idxname[output_idx], in_idxname[input_idx]
+                               ))
+                axs[i, j].set_title('Impulse response')
+
+        elif plot_type == 'step_int':
+            # format: i, j, 'step_int', (out_idx, in_idx), (out_idx2, in_idx2)
+            # the integral of the step response
+            for k in range(3, len(entry)):
+                output_idx, input_idx = entry[k]
+                _, y_step = co.step_response(H[output_idx, input_idx], T_sim)
+                y_step_int = np.cumsum(y_step[0, :]) * Ts
+                axs[i, j].plot(T_sim, y_step_int,
+                               label='step resp. int. {:}, {:}'.format(
+                                   out_idxname[output_idx], in_idxname[input_idx]
+                               ))
+                axs[i, j].set_title('Step response integral')
+
+        elif plot_type == 'nyquist':
+            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these
+            # are interested frequencies]
+            output_idx, input_idx = entry[3]
+            mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
+            H = mag[0, 0] * np.exp(1j * phase[0, 0])
+            axs[i, j].plot(H.real, H.imag, '-',
+                           label='H{:}{:}'.format(
+                               out_idxname[output_idx], in_idxname[input_idx]
+                           ))
+
+            if len(entry) > 4:
+                toplot_idx = []
+                for omega in entry[4]:
+                    idx = np.argmin(np.abs(freqs - omega))
+                    axs[i, j].text(H[idx].real, H[idx].imag,
+                                   "{:.3f} rad/s".format(freqs[idx]))
+                    toplot_idx.append(idx)
+                axs[i, j].scatter(H[toplot_idx].real, H[toplot_idx].imag)
+
+            axs[i, j].set_aspect('equal')
+
+        elif plot_type == 'bode_mag':
+            # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
+            for k in range(3, len(entry)):
+                if len(entry[k]) == 2:
+                    output_idx, input_idx = entry[k]
+                    mag, phase, freqs = H[output_idx,
+                                          input_idx].freqresp(freqs)
+                    label = '{:}, {:}'.format(
+                        out_idxname[output_idx], in_idxname[input_idx])
+                axs[i, j].plot(freqs, mag[0, 0], label=label)
+
+            axs[i, j].set_xscale('log')
+            axs[i, j].set_yscale('log')
+            axs[i, j].set_xlabel('Freq(rad/s)')
+            axs[i, j].set_title("Frequency Response (non-db)")
+
+        elif plot_type == 'bode_phs':
+            # format: i, j, 'bode_mag', (out_idx, in_idx), (out_idx2, in_idx2)
+
+            for k in range(3, len(entry)):
+                if len(entry[k]) == 2:
+                    output_idx, input_idx = entry[k]
+                    mag, phase, freqs = H[output_idx,
+                                          input_idx].freqresp(freqs)
+                    label = 'H{:}{:}'.format(
+                        out_idxname[output_idx], in_idxname[input_idx])
+                axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label=label)
+
+            for mult in range(-2, 2):
+                axs[i, j].plot([freqs[0], freqs[-1]],
+                               [90 * mult, 90 * mult], '--', c='red')
+
+            axs[i, j].set_xscale('log')
+            axs[i, j].set_xlabel('Freq(rad/s)')
+            axs[i, j].set_title("Phase lag")
+
+    if 'sharex' in analysis_dict.keys():
+        for (i1, j1), (i2, j2) in analysis_dict['sharex']:
+            axs[i1, j1].get_shared_x_axes().join(axs[i1, j1], axs[i2, j2])
+
+    for i in range(nrow):
+        for j in range(ncol):
+            axs[i, j].grid()
+            axs[i, j].legend()
+
+    fig.suptitle('Analysis plots: {:}'.format(controller_name))
+    plt.tight_layout()
+    plt.show()
+
