@@ -11,6 +11,7 @@ import os
 import cvxpy as cvx
 import scipy.sparse as sparse
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 
 
 class MatlabEngine(object):
@@ -600,6 +601,35 @@ class Qsyn:
         K_ss = co.feedback(Q_ss, Pyu, sign=-1)
         return K_ss
 
+    def lambda_log_interpolate(pts, preview=False):
+        """Return a log-log interpolated function.
+
+        Args:
+            pts: List of points.
+            preview (bool, optional): Plot the interpolated function
+                over a wide interval. Only for visualization.
+
+        Returns:
+            a lambda function.
+        """
+        x, y = zip(*pts)
+        xlog = np.log10(x)
+        ylog = np.log10(y)
+        log_interpolator = interp1d(xlog, ylog, fill_value='extrapolate')
+
+        def interpolate_func(xi):
+            return np.power(10, log_interpolator(np.log10(xi)))
+
+        if preview:
+            xdata = np.logspace(-3, 5, 100)
+            ydata = interpolate_func(xdata)
+            plt.plot(xdata, ydata)
+            plt.scatter(x, y)
+            plt.xlim([0, 300])
+            plt.show()
+
+        return interpolate_func
+
     def Q_synthesis(Pz_design, specs):
         """Synthesize a controller for the given plant.
 
@@ -740,6 +770,7 @@ class Qsyn:
                 print(" > {:}         : {:f}".format(key, all_costs[key].value))
             else:
                 print(" > {:}         : None".format(key))
+        print("\n -- Finish reporting cost")
 
         # debug
         fig, axs = plt.subplots(2, 2)
