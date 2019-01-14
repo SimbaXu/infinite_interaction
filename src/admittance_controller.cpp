@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     node_handle.param("debug", debug, false);
 
     // TODO: incorporate these parameters into a launch file
-    std::string robot_handle_type = "direct";
+    std::string robot_control_method = "direct";
     std::string robot_ip_addr = "192.168.0.21";
 
     /* Hardware handles
@@ -69,10 +69,10 @@ int main(int argc, char **argv)
      */
     // Robot controllers
     std::shared_ptr<HWHandle::AbstractRobotController> robot_handle;
-    if (robot_handle_type == "ros_control"){
+    if (robot_control_method == "ros_control"){
         robot_handle = std::make_shared<HWHandle::JointPositionController> (robot_ns, node_handle);
     }
-    else if (robot_handle_type == "direct"){
+    else if (robot_control_method == "direct"){
        robot_handle = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr);
     }
     dVector jnt_init = robot_handle->get_latest_jnt();
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     InfInteraction::TopicDebugger debugger(debug_ns, node_handle);
     int wId, yId, uId, qId, qcmdId;
     wId = debugger.register_multiarray("w_n"); // meeasured wrench
-    yId = debugger.register_multiarray("y_n"); // force output
+    yId = debugger.register_multiarray("y_n"); // force_ output
     uId = debugger.register_multiarray("u_n"); // position command
     qId = debugger.register_multiarray("q_n"); // joint command
     qcmdId = debugger.register_multiarray("qcmd_n"); // joint command
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
         ft_handle.get_latest_wrench(wrench_offset);
         ft_handle.set_wrench_offset(wrench_offset);
         // from external wrench to joint torque
-        robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
+        robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force_ projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
         // Cartesian admittance controller is a fir_mino type. The initial position (Cartesian, 3D) is zero.
         // The initial pose is kept fixed.
@@ -225,8 +225,8 @@ int main(int argc, char **argv)
         dVector wrench_offset;
         ft_handle.get_latest_wrench(wrench_offset);
         ft_handle.set_wrench_offset(wrench_offset);
-        // from external wrench_n to joint torque
-        robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force projection block
+        // from external wrench_measure to joint torque
+        robot_ptr->SetActiveDOFValues(jnt_init); // set the robot's initial configuraiton before initializing force_ projection block
         force_map_ptr = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr, ft_name);
         // The initial pose is kept fixed.
         std::string filter_path;
@@ -286,8 +286,8 @@ int main(int argc, char **argv)
      * robot.
      */
     // pre-defined loop variables
-    std::vector<double> jnt_cmd = {0, 0, 0, 0, 0, 0}, jnt_n(6);
-    std::vector<double> wrench_n = {0, 0, 0, 0, 0, 0}, y_n, u_n;
+    std::vector<double> joint_cmd = {0, 0, 0, 0, 0, 0}, joint_measure(6);
+    std::vector<double> wrench_measure = {0, 0, 0, 0, 0, 0}, y_n, u_n;
 
     // rt setups
     timespec slp_dline_spec, sent_spec, wake_spec;
@@ -308,19 +308,19 @@ int main(int argc, char **argv)
         ros::spinOnce();
 
         // collect current wrench and joint position
-        ft_handle.get_latest_wrench(wrench_n);
-        jnt_n = robot_handle->get_latest_jnt();
+        ft_handle.get_latest_wrench(wrench_measure);
+        joint_measure = robot_handle->get_latest_jnt();
 
-        // wrench transform: convert measured wrench to control output (Cartesian force)
-        force_map_ptr->set_state(jnt_n);
-        y_n = force_map_ptr->compute(wrench_n);
+        // wrench transform: convert measured wrench to control output (Cartesian force_)
+        force_map_ptr->set_state(joint_measure);
+        y_n = force_map_ptr->compute(wrench_measure);
 
         // control law: run control output through controller
         u_n = controller_ptr->compute(y_n);
 
         // inverse kinematics: map control displacement to actual joint command
-        position_map_ptr->set_state(jnt_n);
-        jnt_cmd = position_map_ptr->compute(u_n);
+        position_map_ptr->set_state(joint_measure);
+        joint_cmd = position_map_ptr->compute(u_n);
 
         // stage 1 finished; sleep
         RTUtils::increment_timespec(slp_dline_spec, FOUR_MS);
@@ -328,16 +328,16 @@ int main(int argc, char **argv)
 
         // send joint position command
 	clock_gettime(CLOCK_MONOTONIC, &wake_spec);
-        robot_handle-> send_jnt_command(jnt_cmd);
+        robot_handle-> send_jnt_command(joint_cmd);
 	clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
         // publish debug information
         if (debug) {
-            debugger.publish_multiarray(wId, wrench_n);
+            debugger.publish_multiarray(wId, wrench_measure);
             debugger.publish_multiarray(yId, y_n);
             debugger.publish_multiarray(uId, u_n);
-            debugger.publish_multiarray(qId, jnt_n);
-            debugger.publish_multiarray(qcmdId, jnt_cmd);
+            debugger.publish_multiarray(qId, joint_measure);
+            debugger.publish_multiarray(qcmdId, joint_cmd);
 
             // publish time discrepancy
 	    if (cy_idx % 125 == 0){

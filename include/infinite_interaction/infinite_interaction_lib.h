@@ -47,7 +47,7 @@ inline double MAX(double x, double y)
 
 // A generic Base class for a discrete-time processing "block" that receives at each time
 // step a vector input and produces a vector output. In general, most controllers, kinematic
-// maps, force maps implemented in this package are child classes of this class.
+// maps, force_ maps implemented in this package are child classes of this class.
 class SignalBlock {
 public:
     // NOTE: virtual method allows derived class to call its implementation,
@@ -70,18 +70,18 @@ namespace InfInteraction{
 
 // Project measured wrench to each joint torque.
 class JointTorqueFromWrenchProjector: public SignalBlock {
-    OpenRAVE::RobotBasePtr robot_ptr;
-    OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr;
+    OpenRAVE::RobotBasePtr robot_ptr_;
+    OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr_;
     dVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
-            force, torque,  // input force, torque
+            force, torque,  // input force_, torque
             tau1, tau2, tau, // projected torque
-            jnt_pos_current;  // current joint position
-    OpenRAVE::Transform T_wee;
-    OpenRAVE::RaveVector<double> rave_force, rave_torque, temp_vec;
+            joint_current_;  // current joint position
+    OpenRAVE::Transform T_wee_;
+    OpenRAVE::RaveVector<double> rave_force_, rave_torque_, temp_vec_;
 public:
-    JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
-    dVector compute(const dVector & u_n);
-    void set_state(const dVector & x_n);
+    JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr, std::string ft_sensor_frame);
+    dVector compute(const dVector & wrench_measure);
+    void set_state(const dVector & joint_measure);
     virtual int get_input_size() {return 6;};
     virtual int get_output_size() {return 6;};
     virtual int get_state_size() {return 6;};
@@ -92,17 +92,18 @@ public:
 // This assumtption is not true for a more general class of problem. (But true for the Cartersian admittance
 // task I am working on.
 
-/*! Project measured external acting wrench to Cartesian workspace
+/*! Project measured wrench to Cartesian workspace
  *
  * NOTE: The robot needs to be initialized to the initial configuration, before initializing
  * this function. As
  */
 class Wrench2CartForceProjector: public SignalBlock {
-    OpenRAVE::Transform T_wee;
+    OpenRAVE::Transform T_wee_;
+    OpenRAVE::geometry::RaveVector<double> force_, force_rotated_;
 public:
-    Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::string ft_sensor_frame);
-    dVector compute(const dVector & wrench);
-    void set_state(const dVector & x_n);
+    Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr, std::string ft_frame_name);
+    dVector compute(const dVector & wrench_measure);
+    void set_state(const dVector & dummy_var);
 };
 
 

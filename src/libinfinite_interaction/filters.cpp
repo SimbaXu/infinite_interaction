@@ -8,12 +8,12 @@
 #include <eigen3/Eigen/src/Core/Matrix.h>
 
 
-InfInteraction::JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string ft_sensor_frame)
-        : robot_ptr(robot_ptr_)
+InfInteraction::JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr, std::__cxx11::string ft_sensor_frame)
+        : robot_ptr_(robot_ptr)
 {
 
-    InfInteraction::JointTorqueFromWrenchProjector::ft_sensor_ptr = InfInteraction::JointTorqueFromWrenchProjector::robot_ptr->GetManipulator(ft_sensor_frame);
-    if (!InfInteraction::JointTorqueFromWrenchProjector::ft_sensor_ptr){
+    InfInteraction::JointTorqueFromWrenchProjector::ft_sensor_ptr_ = InfInteraction::JointTorqueFromWrenchProjector::robot_ptr_->GetManipulator(ft_sensor_frame);
+    if (!InfInteraction::JointTorqueFromWrenchProjector::ft_sensor_ptr_){
         ROS_ERROR_STREAM("Unable to find ft_sensor_frame [" + ft_sensor_frame + "]");
         ros::shutdown();
     }
@@ -24,25 +24,25 @@ InfInteraction::JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(O
     InfInteraction::JointTorqueFromWrenchProjector::tau.resize(6);
 }
 
-dVector InfInteraction::JointTorqueFromWrenchProjector::compute(const dVector &u_n) {
+dVector InfInteraction::JointTorqueFromWrenchProjector::compute(const dVector &wrench_measure) {
     // lock environment, then change robot dof
-    boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
-    robot_ptr->SetActiveDOFValues(jnt_pos_current);
+    boost::recursive_mutex::scoped_lock lock(robot_ptr_->GetEnv()->GetMutex());
+    robot_ptr_->SetActiveDOFValues(joint_current_);
     // Jacobians are (3x6) matrix despite the robot having 7 dof because
     // there are only 6 joints from the base link to the ft sensor.
-    ft_sensor_ptr->CalculateJacobian(jacobian);
-    ft_sensor_ptr->CalculateAngularVelocityJacobian(jacobian_rot);
-    T_wee = ft_sensor_ptr->GetEndEffectorTransform();
+    ft_sensor_ptr_->CalculateJacobian(jacobian);
+    ft_sensor_ptr_->CalculateAngularVelocityJacobian(jacobian_rot);
+    T_wee_ = ft_sensor_ptr_->GetEndEffectorTransform();
 
-    // transform measured force/torque to world frame
-    temp_vec.x = u_n[0]; temp_vec.y = u_n[1]; temp_vec.z = u_n[2];
-    rave_force = T_wee.rotate(temp_vec);
-    temp_vec.x = u_n[3]; temp_vec.y = u_n[4]; temp_vec.z = u_n[5];
-    rave_torque = T_wee.rotate(temp_vec);
+    // transform measured force_/torque to world frame
+    temp_vec_.x = wrench_measure[0]; temp_vec_.y = wrench_measure[1]; temp_vec_.z = wrench_measure[2];
+    rave_force_ = T_wee_.rotate(temp_vec_);
+    temp_vec_.x = wrench_measure[3]; temp_vec_.y = wrench_measure[4]; temp_vec_.z = wrench_measure[5];
+    rave_torque_ = T_wee_.rotate(temp_vec_);
 
     // project to joint space
-    force[0] = rave_force.x; force[1] = rave_force.y; force[2] = rave_force.z;
-    torque[0] = rave_torque.x; torque[1] = rave_torque.y; torque[2] = rave_torque.z;
+    force[0] = rave_force_.x; force[1] = rave_force_.y; force[2] = rave_force_.z;
+    torque[0] = rave_torque_.x; torque[1] = rave_torque_.y; torque[2] = rave_torque_.z;
     jacobian_T = mat_transpose(jacobian, 6);
     jacobian_rot_T = mat_transpose(jacobian_rot, 6);
     matrix_mult(jacobian_T, force, tau1);
@@ -51,8 +51,8 @@ dVector InfInteraction::JointTorqueFromWrenchProjector::compute(const dVector &u
     return tau;
 }
 
-void InfInteraction::JointTorqueFromWrenchProjector::set_state(const dVector &x_n) {
-    jnt_pos_current = x_n;
+void InfInteraction::JointTorqueFromWrenchProjector::set_state(const dVector &joint_measure) {
+    joint_current_ = joint_measure;
 }
 
 // ControllerCollection
@@ -99,18 +99,21 @@ void InfInteraction::SimpleOffset::set_state(const dVector &x_n) {
     // Do nothing
 }
 
-InfInteraction::Wrench2CartForceProjector::Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr_,
-                                                                     std::__cxx11::string ft_sensor_frame) {
-    T_wee = robot_ptr_->GetManipulator(ft_sensor_frame)->GetEndEffectorTransform();
+InfInteraction::Wrench2CartForceProjector::Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr,
+                                                                     std::__cxx11::string ft_frame_name) {
+    T_wee_ = robot_ptr->GetManipulator(ft_frame_name)->GetEndEffectorTransform();
 }
 
-dVector InfInteraction::Wrench2CartForceProjector::compute(const dVector &wrench) {
-    OpenRAVE::geometry::RaveVector<double> force (wrench[0], wrench[1], wrench[2]), force_rotated;
-    force_rotated = T_wee.rotate(force);
-    return dVector {force_rotated.x, force_rotated.y, force_rotated.z};
+dVector InfInteraction::Wrench2CartForceProjector::compute(const dVector &wrench_measure) {
+    force_.x = wrench_measure[0];
+    force_.y = wrench_measure[1];
+    force_.z = wrench_measure[2];
+
+    force_rotated_ = T_wee_.rotate(force_);
+    return dVector {force_rotated_.x, force_rotated_.y, force_rotated_.z};
 }
 
-void InfInteraction::Wrench2CartForceProjector::set_state(const dVector &x_n) {
+void InfInteraction::Wrench2CartForceProjector::set_state(const dVector &dummy_var) {
     // Do nothing
 }
 
@@ -171,7 +174,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     //
     // Coefficient t4 is to encourgate the robot to keep its
     // initial configuration. A side-effect of this term is that the robot would try to move back
-    // to the initial configuration when there is no force acting on it. gam2 is set to 0.01
+    // to the initial configuration when there is no force_ acting on it. gam2 is set to 0.01
 
     // Form Quadratic objective: 0.5 x^T H x + g^T x
     Eigen::Matrix<double, 6, 6, Eigen::RowMajor> H;
