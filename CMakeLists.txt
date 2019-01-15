@@ -59,16 +59,16 @@ set_target_properties(joint_admittance_controller PROPERTIES COMPILE_FLAGS "${Op
 set_target_properties(joint_admittance_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
 # force_ controller: (another main program)
-add_executable(force_controller src/force_controller.cpp )
-target_include_directories(force_controller PUBLIC include)
-target_link_libraries(force_controller
+add_executable(hybrid_force_controller src/force_controller.cpp )
+target_include_directories(hybrid_force_controller PUBLIC include)
+target_link_libraries(hybrid_force_controller
 		${catkin_LIBRARIES}
 		infinite_interaction qpOASES
 		# openrave dependencies
 		${OpenRAVE_LIBRARIES} ${OpenRAVE_CORE_LIBRARIES}
 		${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY})
-set_target_properties(force_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
-set_target_properties(force_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
+set_target_properties(hybrid_force_controller PROPERTIES COMPILE_FLAGS "${OpenRAVE_CXX_FLAGS}")
+set_target_properties(hybrid_force_controller PROPERTIES LINK_FLAGS "${OpenRAVE_LINK_FLAGS}")
 
 #add_executable(sinuisoidal_motion_generator src/sinuisoidal_motion_generator.cpp)
 #target_include_directories(sinuisoidal_motion_generator PUBLIC include)

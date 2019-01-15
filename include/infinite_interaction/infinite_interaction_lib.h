@@ -163,7 +163,8 @@ public:
  */
  class CartPositionTracker: public SignalBlock {
      dVector _jnt_pos_current,  /* Current robot joint position */
-             _jnt_pos_init;     /* Initial robot joint position */
+             _jnt_pos_init,     /* Initial robot joint position */
+             jnt_pos_save_; /* Temporary vector to store data */
      OpenRAVE::RaveVector<OpenRAVE::dReal>
              _quat_init, /*Initial orientation*/
              _pos_init /*Initial position*/ ;
@@ -172,6 +173,14 @@ public:
      double _gam2,  /*Weight to limit (q_cur + dq - q_init)*/
              _gam;  /*Weight to limit dq*/
  public:
+     /*!
+      *
+      * @param robot_ptr_
+      * @param manip_frame
+      * @param jnt_pos_init
+      * @param gam
+      * @param gam2
+      */
      CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init, double gam=0.0, double gam2=0.0);
 
      /*! \brief Compute joint values that track the given the Cartesian position pos_n.
@@ -352,6 +361,12 @@ public:
     double compute(double x_n);
     dVector compute(const dVector & x_n);
     void set_state(const dVector & x_n);
+    /*! Copy the internal state of the given filter.
+     *
+     * @param friend_filter
+     * @return true if sucess, false otherwise.
+     */
+    bool copy_state_from(const std::shared_ptr<DiscreteTimeFilter> & friend_filter);
 };
 
 
@@ -392,6 +407,7 @@ public:
     void set_debug(ros::NodeHandle &nh);
     void set_wrench_offset(dVector wrench_offset_);
     void log_latest_wrench(const std_msgs::Header &);
+    bool received_signal();
 };
 
 namespace HWHandle {
@@ -441,9 +457,11 @@ namespace HWHandle {
     class RC8HWController : public AbstractRobotController {
         std::vector<double> _jnt;
         std::shared_ptr<denso_control::RC8ControllerInterface> _rc8_controller_ptr;
-	bool _ret;
+        bool _ret;
+//        unsigned int slave_mode = SlaveMode::J0; // most smooth, but must be ran on RT machine
+        unsigned int slave_mode_ = SlaveMode::J1; // less smooth
     public:
-        /* Make connection to the RC8, start motor.
+        /* Connect to the RC8 controller, start motor.
          *
          */
         explicit RC8HWController(std::string ip_addr);

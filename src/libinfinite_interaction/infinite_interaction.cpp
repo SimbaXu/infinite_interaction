@@ -61,10 +61,7 @@ void FTSensorHandle::get_latest_wrench(std::vector<double> &force, std::vector<d
 }
 
 void FTSensorHandle::get_latest_wrench(std::vector<double> &wrench) {
-    if (fx == 0.12543214218){
-        ROS_FATAL_STREAM("FT handler has not received any signal. Stopping!");
-        ros::shutdown();
-    }
+
     wrench.resize(6);
     wrench[0] = fx;
     wrench[1] = fy;
@@ -140,6 +137,15 @@ void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
         wrench_offset[i] = wrench_offset_[i];
     }
 }
+
+bool FTSensorHandle::received_signal() {
+     if (fx == 0.12543214218){
+        ROS_FATAL_STREAM("FT handler has not received any signal. Stopping!");
+        return false;
+    }
+     else return true;
+}
+
 JointPositionHandler::JointPositionHandler() {
     joint_position.resize(6);
     for (int i = 0; i < 6; ++i) {
@@ -236,7 +242,11 @@ namespace HWHandle {
 
     RC8HWController::RC8HWController(std::string ip_addr){
         _rc8_controller_ptr = std::make_shared<denso_control::RC8ControllerInterface>(ip_addr);
-        _rc8_controller_ptr->setSlaveMode(SlaveMode::J0);
+        _rc8_controller_ptr->setSlaveMode(slave_mode_);
+        if (slave_mode_==SlaveMode::J1){
+            ROS_WARN("Using J1 for controlling. Not the best experience. Consider changing to J0.");
+        }
+
         bool ret;
 
         // connection

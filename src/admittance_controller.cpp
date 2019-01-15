@@ -327,9 +327,9 @@ int main(int argc, char **argv)
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_dline_spec, NULL); // sleep until slp_dline_spec
 
         // send joint position command
-	clock_gettime(CLOCK_MONOTONIC, &wake_spec);
+        clock_gettime(CLOCK_MONOTONIC, &wake_spec);
         robot_handle-> send_jnt_command(joint_cmd);
-	clock_gettime(CLOCK_MONOTONIC, &sent_spec);
+        clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
         // publish debug information
         if (debug) {

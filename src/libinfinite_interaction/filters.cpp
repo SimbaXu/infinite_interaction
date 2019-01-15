@@ -123,6 +123,7 @@ InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr 
     // lock
     boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
     robot_ptr_->SetActiveDOFValues(_jnt_pos_current);
+    jnt_pos_save_.resize(_jnt_pos_init.size());
 
     manip_ptr = robot_ptr->GetManipulator(manip_frame);
     if(!manip_ptr){
@@ -139,6 +140,7 @@ InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr 
 dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     // lock
     boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
+    robot_ptr->GetActiveDOFValues(jnt_pos_save_); // save current dof value to restore later
     robot_ptr->SetActiveDOFValues(_jnt_pos_current);
 
     // get current position and quaternion
@@ -222,6 +224,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
         }
     }
 
+    robot_ptr->SetActiveDOFValues(jnt_pos_save_); // restore saved joint position
     return jnt_pos_cmd;
 }
 

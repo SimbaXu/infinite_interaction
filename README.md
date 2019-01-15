@@ -10,7 +10,6 @@ To run Gazebo simulation:
 
    and check that the topics are shown.
 
-
 Notes on loading the system parameters:
  - load parameters with:
    #+BEGIN_SRC sh
@@ -37,6 +36,15 @@ Notes on running the actual system:
     roslaunch infinite_interaction admittance_controller.launch
   #+END_SRC
 
+# To run force control experiment
+
+``` shell
+# or, instead of the above step: launch netft via a node
+roslaunch infinite_interaction load_netft.launch
+
+# Cartesian control experiment
+roslaunch infinite_interaction hybrid_force_control.launch
+```
 
 # Requirements:
 

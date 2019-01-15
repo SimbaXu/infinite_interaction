@@ -1,0 +1,34 @@
+# node internal parameter
+hybrid_force_controller:
+
+  # This parameter selects the active controller
+  active_controller: Q_syn
+
+  # common parameters specific to the robot
+  scene_path: robots/denso_ft_sensor_gripper.robot.xml
+  robot_name: denso_ft_sensor_gripper
+  manip_frame: gripper
+  ftsensor_frame: ft_sensor
+  robot_control_method: direct
+
+  search_velocity_mm_sec: 0.5
+  search_force_threshold: 2.0  # need to be positive
+
+  gam: 1.0e-5
+  gam2: 0.0e-5
+
+# controllers definitiosn
+Q_syn:
+  type: Q_synthesis
+
+  # DESCRIPTION:
+
+  # INTENDED BEHAVIOR: 
+
+  # IMPLEMENTATION NOTE:
+
+  controllers:
+    - /force_control_Q_controller/Q0  # nominal controller with good robustness prop
+    - /force_control_Q_controller/Q1  # nominal controller with good robustness prop
+    - /force_control_Q_controller/Q2  # nominal controller with good robustness prop
+    - /force_control_Q_controller/Q3  # nominal controller with good robustness prop
