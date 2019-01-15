@@ -334,10 +334,11 @@ public:
 class DiscreteTimeFilter: public SignalBlock {
     /*! Order of the filter. Is basically the order of the denominator. */
     int N, M;
-    int n, mem_sz; /*! Current index. */
-    /*! The last (order)-th input and output is stored. All are default to some initial condition. */
+    int n;       /* Current memory index. */
+    int mem_sz;  /* Both memory banks, input and output banks, have `mem_sz` numbers. */
+    /*! Store the last (order)-th inputs and outputs */
     dVector x_mem, y_mem;
-    dVector b, a;
+    dVector b, a; // Coefficients of the filter. If is a FIR, a is unit.
 public:
     /*! Initialize a standard ccde.
      *
@@ -363,10 +364,10 @@ public:
     void set_state(const dVector & x_n);
     /*! Copy the internal state of the given filter.
      *
-     * @param friend_filter
+     * @param other_filter
      * @return true if sucess, false otherwise.
      */
-    bool copy_state_from(const std::shared_ptr<DiscreteTimeFilter> & friend_filter);
+    bool copy_state_from(const std::shared_ptr<DiscreteTimeFilter> & other_filter);
 };
 
 

@@ -377,6 +377,12 @@ DiscreteTimeFilter::DiscreteTimeFilter(dVector taps) {
     a = a_in;
 };
 
+bool DiscreteTimeFilter::copy_state_from(const std::shared_ptr<DiscreteTimeFilter> & other_filter){
+    if (mem_sz != other_filter->mem_sz) return false;
+    x_mem = other_filter->x_mem;
+    y_mem = other_filter->y_mem;
+    n = other_filter->n;
+}
 
 void FIRsrfb::init_filter(dVector uinit) {
     // check shape consistency

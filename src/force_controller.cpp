@@ -8,7 +8,7 @@
 
 const double MM = 1e-3;
 const double Ts = 0.008;
-
+inline double ABS(double x) {return (x > 0) ? x: -x;}
 
 void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 {
@@ -29,7 +29,7 @@ class ControllerManager {
     // it is a PI. If there are four filters per vector, it is a Q-synthesis controller. Sequence: Q0, Q1, zPyu0, zPyu1
     std::vector<std::vector<std::shared_ptr<DiscreteTimeFilter> > > controller_ptrs_pool_;
     int active_controller_idx_ = 0;
-    int nb_filters_;
+    int nb_filters_; // Nb. of filters an individual controller have. This must be the same for all controllers in the pool.
     int controller_type_;  // 0: Q-synthesis, 1: PI
 
     // internal states
@@ -136,18 +136,24 @@ class HybridForceController {
     std::shared_ptr<ControllerManager> force_controller_ptr_;
     double search_velocity_mm_sec_; /* Velocity to search for horizontal surface */
     double search_force_threshold_; /* Threshold for surface detection */
+    double safety_force_threshold_;
 
     std::shared_ptr<SignalBlock> position2joint_map_ptr_;
 
     // variables used in RT loop
-    std::vector<double> joint_cmd_ = {0, 0, 0, 0, 0, 0};
-    std::vector<double> joint_measure_ = {0, 0, 0, 0, 0, 0};
+    std::vector<double> joint_cmd_;
+    std::vector<double> joint_measure_;
     std::vector<double> wrench_measure_ = {0, 0, 0, 0, 0, 0};
-    std::vector<double> force_measure_ = {0, 0, 0};
-    double force_vert_measure_, force_vert_desired_ = -1;
+    std::vector<double> force_measure_;
     std::vector<double> force_controller_inputs_ = {0, 0};
     double force_controller_output_ = 0;
-    std::vector<double> cartesian_cmd_ = {0, 0, 0};
+    std::vector<double> cartesian_cmd_;
+
+    std::vector<double> setpoints_;  /* variables used for setpoints*/
+    // NOTE on setpoint: In the second state of force control, this variable is freqently looked up
+    // in the main control loop. In fact, exactly once per loop. The details of which index is used
+    // for what signal is leave below.
+    ros::Subscriber setpoints_subscriber_;
 
 public:
     /*! Initialize Hybrid Force controller
@@ -156,7 +162,9 @@ public:
      *
      * @param nh
      */
-    HybridForceController(ros::NodeHandle nh): nh_(nh){
+    HybridForceController(ros::NodeHandle nh): nh_(nh), setpoints_(10, 0), cartesian_cmd_(3, 0), joint_cmd_(6, 0), joint_measure_(6, 0), force_measure_(3, 0),
+    safety_force_threshold_(20)
+    {
         ROS_INFO("-- Initializing Hybrid Force Controller");
 
         // load parameters
@@ -186,6 +194,7 @@ public:
         if (debug_mode_)ft_hw_ptr_->set_debug(nh_);
 
         debugger_setup();
+        setpoint_subscriber_setup();
 
         // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
         OpenRAVE::RaveInitialize(true); // start openrave core
@@ -225,6 +234,10 @@ public:
         position2joint_map_ptr_ = std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr_, manip_frame_name_, joint_init_, gam, gam2);
     };
 
+    void setpoint_subscriber_setup(){
+        setpoints_subscriber_ = nh_.subscribe("setpoints", 3, &HybridForceController::setpoint_callback, this);
+    }
+
     void debugger_setup(){
         // debugger publishing data to topics
         debugger_ptr_ = std::make_shared<InfInteraction::TopicDebugger>(debug_ns_, nh_);
@@ -251,7 +264,8 @@ public:
             ROS_INFO_STREAM("Trial arborts by user");
             return false;
         }
-        // rt setups
+
+        // setup
         timespec slp_dline_spec, sent_spec, wake_spec;
         if (RTUtils::set_policy_fifo() == 0) {
             ROS_INFO("sch policy set to fifo");
@@ -259,14 +273,24 @@ public:
         else{
             ROS_INFO("sch policy remained default");
         }
-
         const int FOUR_MS = 4000000;
         int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
-        clock_gettime(CLOCK_MONOTONIC, &slp_dline_spec);
         int cy_idx = 0;  // cycle index
+        int state_id; // state index, see below for details
+        state_id = 1;
 
-        // state 1: touch down
-        // The robot moves slowly downward until it touches the board.
+        // two states loop designs
+        //  [state 1] -> [states 2]
+        //
+        // Descriptpion:
+        // - In [state 1], the robot moves downward until the vertical force component is greater than a prescribed threshold. When this occurs, .
+        //   system enters [state 2];
+        // - In [state 2], the robot moves according to instruction given by the setpoints. Particularly
+        //      index 0: translation along the X-axis,
+        //      index 1: translation along the Y-axis,
+        //      index 2: desired vertical force,
+        //      index 3: controller number. Must be integer.
+        clock_gettime(CLOCK_MONOTONIC, &slp_dline_spec);
         while(!ros::isShuttingDown()){
             ros::spinOnce();
 
@@ -277,14 +301,42 @@ public:
             wrench2force_map_ptr_->set_state(joint_measure_);
             force_measure_ = wrench2force_map_ptr_->compute(wrench_measure_);
 
-            if (force_measure_[2] > search_force_threshold_) {
-                ROS_INFO_STREAM("Vertical component of measured force: "<< force_measure_[2] << ". Touch down successfuly.");
-                break;
+
+            if (state_id == 1){
+                if (force_measure_[2] > search_force_threshold_) {
+                    ROS_INFO_STREAM("Vertical component of measured force: "<< force_measure_[2] << ". Touch down successfuly.");
+                    state_id = 2;
+                }
+                cartesian_cmd_[2] += - search_velocity_mm_sec_ * MM * Ts;  // rate = 1e-2 mm/sec
             }
 
-            cartesian_cmd_[0] = 0;
-            cartesian_cmd_[1] = 0;
-            cartesian_cmd_[2] += - search_velocity_mm_sec_ * MM * Ts;  // rate = 1e-2 mm/sec
+            else if (state_id == 2){
+                // safety measure
+                if (ABS(force_measure_[0]) > safety_force_threshold_ or ABS(force_measure_[1]) > safety_force_threshold_ or ABS(force_measure_[2]) > safety_force_threshold_){
+                    ROS_ERROR_STREAM("Measure force too high. Shutdown to prevent damaging the robot!");
+                    ros::shutdown();
+                    state_id = 3;
+                }
+
+                // switch controller
+                force_controller_ptr_->switch_controller(static_cast<int>(std::round(setpoints_[3])));
+
+                // compute vertical force signal
+                force_controller_inputs_[0] = setpoints_[2];  // desired force level
+                force_controller_inputs_[1] = force_measure_[2];  // actual vertical force measurement
+                force_controller_ptr_->compute(force_controller_inputs_, force_controller_output_);
+
+                // form cartesian command
+                cartesian_cmd_[0] = setpoints_[0];
+                cartesian_cmd_[1] = setpoints_[1];
+                cartesian_cmd_[2] = force_controller_output_;
+
+            }
+            else {
+                ROS_FATAL_STREAM("Encounter illegal state_id: " << state_id << ". Shutting down.");
+                ros::shutdown();
+                break;
+            }
 
             // compute command to send
             position2joint_map_ptr_->set_state(joint_measure_);
@@ -296,7 +348,7 @@ public:
 
             // send joint position command
             clock_gettime(CLOCK_MONOTONIC, &wake_spec);
-            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
+//            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
             robot_ptr_->SetActiveDOFValues(joint_cmd_); // update in openrave viewer
             clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
@@ -320,7 +372,7 @@ public:
             clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &slp_dline_spec, NULL);
         }
 
-        // state 2: move back
+        // state 2: track force
         return true;
     }
 
@@ -348,6 +400,14 @@ public:
         else {
             ROS_INFO_STREAM("Param loaded from [" << param_path << "]. Value: " << param);
         }
+    }
+
+private:
+    void setpoint_callback(const std_msgs::Float64MultiArray& multiarray_msg){
+        ROS_DEBUG_STREAM("in setpoint callback");
+        setpoints_[0] = multiarray_msg.data[0];
+        setpoints_[1] = multiarray_msg.data[1];
+        setpoints_[2] = multiarray_msg.data[2];
     }
 };
 
