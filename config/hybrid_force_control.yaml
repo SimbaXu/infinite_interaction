@@ -28,7 +28,16 @@ Q_syn:
   # IMPLEMENTATION NOTE:
 
   controllers:
-    - /force_control_Q_controller/Q0  # nominal controller with good robustness prop
-    - /force_control_Q_controller/Q1  # nominal controller with good robustness prop
-    - /force_control_Q_controller/Q2  # nominal controller with good robustness prop
-    - /force_control_Q_controller/Q3  # nominal controller with good robustness prop
+    - /hybrid_force_controller/Q0_0  # nominal controller with good robustness prop
+    - /hybrid_force_controller/Q0_1  # nominal controller with good robustness prop
+    - /hybrid_force_controller/Q0_2  # nominal controller with good robustness prop
+    - /hybrid_force_controller/Q0_3  # nominal controller with good robustness prop
+
+integral:
+  type: PI
+ 
+  controllers:
+    - /hybrid_force_controller/I0_0  # nominal controller
+
+ 
+  
