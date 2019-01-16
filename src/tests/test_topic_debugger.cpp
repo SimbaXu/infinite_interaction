@@ -14,8 +14,8 @@ TEST(TopicDebugger, Basic){
 
     ros::Rate rate(10);
     for(int i=0; i < 10 and ros::ok(); i++){
-        debugger.publish_multiarray(0, dVector {0, 1, 2, 3});
-        debugger.publish_multiarray(1, dVector {4, 5, 6, 7});
+        debugger.publish_multiarray(0, DoubleVector {0, 1, 2, 3});
+        debugger.publish_multiarray(1, DoubleVector {4, 5, 6, 7});
         rate.sleep();
     }
 

@@ -4,6 +4,7 @@
 <launch>
   <!-- This yaml file is the central parameter store. -->
   <rosparam command="load" file="$(find infinite_interaction)/config/hybrid_force_control.yaml"/> 
+  <rosparam command="load" file="$(find infinite_interaction)/config/hybrid_force_controllers/integral0_0.yaml"/> 
 
   <!-- controller designs -->
   <rosparam>

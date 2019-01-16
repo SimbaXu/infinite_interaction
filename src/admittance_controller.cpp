@@ -75,7 +75,7 @@ int main(int argc, char **argv)
     else if (robot_control_method == "direct"){
        robot_handle = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr);
     }
-    dVector jnt_init = robot_handle->get_latest_jnt();
+    DoubleVector jnt_init = robot_handle->get_latest_jnt();
 
     // FT sensor data acquisition setup via FTsensor handler
     FTSensorHandle ft_handle(node_handle, ft_topic);
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
             node_handle.getParam("j" + std::to_string(i + 1) + "/filter", jnt_filter_path);
             jnt_filter_type = jnt_filter_path.substr(1, 8);
             if (jnt_filter_type == "iir_siso"){
-                dVector cof_a, cof_b;
+                DoubleVector cof_a, cof_b;
                 if (not node_handle.getParam(jnt_filter_path + "/b", cof_b)){
                     ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
                     ros::shutdown();
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
             }
             else if (jnt_filter_type == "fir_siso") {
                 int T, nu, ny;
-                dVector L, MB2;
+                DoubleVector L, MB2;
                 if (not node_handle.getParam(jnt_filter_path + "/T", T)){
                     ROS_ERROR_STREAM("Unable to find filter: " << jnt_filter_path << ". Shutting ROS down");
                     ros::shutdown();
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
                 node_handle.getParam(jnt_filter_path + "/ny", ny);
                 node_handle.getParam(jnt_filter_path + "/L", L);
                 node_handle.getParam(jnt_filter_path + "/MB2", MB2);
-                jnt_controllers.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, dVector{jnt_init[i] - jnt_ref[i]}));
+                jnt_controllers.push_back(std::make_shared<FIRsrfb>(T, ny, nu, L, MB2, DoubleVector{jnt_init[i] - jnt_ref[i]}));
             }
             else {
                 throw std::invalid_argument("Unknown filter kind");
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
     else if (controller_type == "cartesian_3D_admittance"){
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
-        dVector wrench_offset;
+        DoubleVector wrench_offset;
         ft_handle.get_latest_wrench(wrench_offset);
         ft_handle.set_wrench_offset(wrench_offset);
         // from external wrench to joint torque
@@ -199,7 +199,7 @@ int main(int argc, char **argv)
         // The initial pose is kept fixed.
         std::string filter_path;
         int T, nu, ny;
-        dVector L, MB2;
+        DoubleVector L, MB2;
         if (!node_handle.getParam("/" + controller_id + "/filter", filter_path)){
             ROS_FATAL_STREAM("Does not find any filter in controller id: " << controller_id << ". Shutting down!");
             ros::shutdown();
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
      else if (controller_type == "cartesian_3D_admittance_Qparam"){
         // get current wrench reading and set it as the offset
         ros::Duration(0.3).sleep(); ros::spinOnce();  // make sure to receive at least a wrench reading before continue
-        dVector wrench_offset;
+        DoubleVector wrench_offset;
         ft_handle.get_latest_wrench(wrench_offset);
         ft_handle.set_wrench_offset(wrench_offset);
         // from external wrench_measure to joint torque
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
             ROS_FATAL_STREAM("Unable to find a filter in controller: " << controller_id << ". Shutting down!");
             ros::shutdown();
         }
-        dVector fb_b, fb_a, ff_taps;
+        DoubleVector fb_b, fb_a, ff_taps;
         if (not node_handle.getParam(filter_path + "/xff_taps", ff_taps)){
             ROS_ERROR_STREAM("Unable to find filter: " << filter_path << ". Shutting down");
             ros::shutdown();

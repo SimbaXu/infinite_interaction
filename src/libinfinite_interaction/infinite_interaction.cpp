@@ -6,16 +6,16 @@
 #include <infinite_interaction/infinite_interaction_lib.h>
 
 
-InfInteraction::TopicDebugger::TopicDebugger(std::string debug_ns_, ros::NodeHandle &node_handle_): debug_ns(debug_ns_), nh(node_handle_){ }
+InfInteraction::TopicDebugger::TopicDebugger(std::string base_ns, ros::NodeHandle &nh): base_ns_(base_ns), nh_(nh){ }
 
 int InfInteraction::TopicDebugger::register_multiarray(std::string topic_name) {
-    ros::Publisher pub_ = nh.advertise<MultiArrayMsg>(debug_ns + "/" + topic_name, 10);
-    pub_vecs.push_back(std::make_shared<ros::Publisher> (std::move(pub_)));
-    int topic_id = pub_vecs.size() - 1;
+    ros::Publisher pub_ = nh_.advertise<MultiArrayMsg>(base_ns_ + "/" + topic_name, 10);
+    publisher_ptr_vector_.push_back(std::make_shared<ros::Publisher> (std::move(pub_)));
+    int topic_id = publisher_ptr_vector_.size() - 1;
     return topic_id;
 }
 
-void InfInteraction::TopicDebugger::publish_multiarray(int topic_id, const dVector &data) {
+void InfInteraction::TopicDebugger::publish_multiarray(int topic_id, const DoubleVector &data) {
     std_msgs::MultiArrayDimension dim;
     dim.label = "x";
     dim.size = static_cast<unsigned int>(data.size());
@@ -23,9 +23,9 @@ void InfInteraction::TopicDebugger::publish_multiarray(int topic_id, const dVect
     MultiArrayMsg msg;
     msg.layout.dim.push_back(dim);
 
-    if (topic_id >= 0 and topic_id < pub_vecs.size()){
+    if (topic_id >= 0 and topic_id < publisher_ptr_vector_.size()){
         for (double x : data) msg.data.push_back(x);
-        pub_vecs[topic_id]->publish(msg);
+        publisher_ptr_vector_[topic_id]->publish(msg);
     }
     else {
         ROS_WARN_STREAM("Not debugging topic found!");
@@ -93,7 +93,7 @@ FTSensorHandle::FTSensorHandle() : fx(0.12543214218), fy(0), fz(0), tx(0), ty(0)
     }
 }
 
-FTSensorHandle::FTSensorHandle(const dVector &wrench_offset_input, dVector b_in, dVector a_in): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)  {
+FTSensorHandle::FTSensorHandle(const DoubleVector &wrench_offset_input, DoubleVector b_in, DoubleVector a_in): fx(0.12543214218), fy(0), fz(0), tx(0), ty(0), tz(0)  {
     b = b_in;
     a = a_in;
     wrench_offset.resize(6);
@@ -131,7 +131,7 @@ void FTSensorHandle::log_latest_wrench(const std_msgs::Header &header) {
 }
 
 
-void FTSensorHandle::set_wrench_offset(dVector wrench_offset_) {
+void FTSensorHandle::set_wrench_offset(DoubleVector wrench_offset_) {
     wrench_offset_.resize(6);
      for (unsigned int i = 0; i < 6; ++i) {
         wrench_offset[i] = wrench_offset_[i];
@@ -159,7 +159,7 @@ void JointPositionHandler::signal_callback(const sensor_msgs::JointStateConstPtr
     }
 }
 
-dVector JointPositionHandler::get_latest_jnt() {
+DoubleVector JointPositionHandler::get_latest_jnt() {
     return joint_position;
 }
 
@@ -254,7 +254,6 @@ namespace HWHandle {
         if (!ret){
             ROS_ERROR("Unable to connect to the RC8");
             ros::shutdown();
-            return;
         } else ROS_INFO("Connection successful");
 
         // get initial joint position
@@ -266,7 +265,6 @@ namespace HWHandle {
         if (!ret){
             ROS_ERROR("Unable to start motor");
             ros::shutdown();
-            return;
         } else ROS_INFO("Motor started");
 
     }
@@ -298,7 +296,7 @@ namespace HWHandle {
 
 }
 
-DiscreteTimeFilter::DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val) {
+DiscreteTimeFilter::DiscreteTimeFilter(DoubleVector b_in, DoubleVector a_in, double y_initial_val) {
     n = 0;
     N = static_cast<int>(a_in.size() - 1);
     M = static_cast<int>(b_in.size() - 1);
@@ -347,19 +345,19 @@ double DiscreteTimeFilter::compute(double x_n) {
     return y_mem[n % mem_sz];
 }
 
-dVector DiscreteTimeFilter::compute(const dVector & x_n) {
-    dVector y_n {compute(x_n[0])};
+DoubleVector DiscreteTimeFilter::compute(const DoubleVector & x_n) {
+    DoubleVector y_n {compute(x_n[0])};
     return y_n;
 }
 
 
-void DiscreteTimeFilter::set_state(const dVector & x_n) {
+void DiscreteTimeFilter::set_state(const DoubleVector & x_n) {
     // do nothing
 }
 
-DiscreteTimeFilter::DiscreteTimeFilter(dVector taps) {
+DiscreteTimeFilter::DiscreteTimeFilter(DoubleVector taps) {
     // init parameters similar to a ccde
-    dVector a_in{1};
+    DoubleVector a_in{1};
 
     // initial coefficients
     n = 0;
@@ -384,7 +382,7 @@ bool DiscreteTimeFilter::copy_state_from(const std::shared_ptr<DiscreteTimeFilte
     n = other_filter->n;
 }
 
-void FIRsrfb::init_filter(dVector uinit) {
+void FIRsrfb::init_filter(DoubleVector uinit) {
     // check shape consistency
     if (T * ny * nu != L.size() or T * nu * nu != MB2.size()){
         throw std::invalid_argument("Wrong input shape");
@@ -415,17 +413,17 @@ void FIRsrfb::init_filter(dVector uinit) {
 }
 
 
-FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_, dVector uinit) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
+FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, DoubleVector L_, DoubleVector MB2_, DoubleVector uinit) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
     init_filter(uinit);
 }
 
-FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
-    dVector uinit (T_ * nu_);
+FIRsrfb::FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, DoubleVector L_, DoubleVector MB2_) :  T(T_), ny(ny_), nu(nu_), L(L_), MB2(MB2_) {
+    DoubleVector uinit (T_ * nu_);
     std::fill(uinit.begin(), uinit.end(), 0);
     init_filter(uinit);
 }
 
-dVector FIRsrfb::compute(const dVector & y_n){
+DoubleVector FIRsrfb::compute(const DoubleVector & y_n){
     // store y_n to ybank
     for (unsigned int i = 0; i < ny; ++i) {
         yidx = (yidx - 1 + ybank_sz) % ybank_sz;
@@ -463,7 +461,7 @@ dVector FIRsrfb::compute(const dVector & y_n){
 }
 
 
-void FIRsrfb::set_state(const dVector & x_n) {
+void FIRsrfb::set_state(const DoubleVector & x_n) {
     // do nothing
 };
 

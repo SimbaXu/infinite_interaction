@@ -2,7 +2,8 @@
 hybrid_force_controller:
 
   # This parameter selects the active controller
-  active_controller: Q_syn
+  # active_controller: Q_syn
+  active_controller: integral
 
   # common parameters specific to the robot
   scene_path: robots/denso_ft_sensor_gripper.robot.xml
@@ -11,7 +12,7 @@ hybrid_force_controller:
   ftsensor_frame: ft_sensor
   robot_control_method: direct
 
-  search_velocity_mm_sec: 0.5
+  search_velocity_mm_sec: 1
   search_force_threshold: 2.0  # need to be positive
 
   gam: 1.0e-5
@@ -28,16 +29,15 @@ Q_syn:
   # IMPLEMENTATION NOTE:
 
   controllers:
-    - /hybrid_force_controller/Q0_0  # nominal controller with good robustness prop
-    - /hybrid_force_controller/Q0_1  # nominal controller with good robustness prop
-    - /hybrid_force_controller/Q0_2  # nominal controller with good robustness prop
-    - /hybrid_force_controller/Q0_3  # nominal controller with good robustness prop
+    - /controllers/Q_syn0_0  # controller 0, version 0
+    - /controllers/Q_syn1_0  # controller 1, version 0
+    - /controllers/Q_syn2_0  
+    - /controllers/Q_syn3_0  
 
 integral:
   type: PI
- 
   controllers:
-    - /hybrid_force_controller/I0_0  # nominal controller
+    - /controllers/integral0_0  # controller 0, version 0
 
  
   

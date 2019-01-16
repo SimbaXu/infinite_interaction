@@ -28,18 +28,75 @@ class ControllerManager {
     // A vector of controllers, each is a vector of pointers to filters. If there are two filters per vector,
     // it is a PI. If there are four filters per vector, it is a Q-synthesis controller. Sequence: Q0, Q1, zPyu0, zPyu1
     std::vector<std::vector<std::shared_ptr<DiscreteTimeFilter> > > controller_ptrs_pool_;
-    int active_controller_idx_ = 0;
+    int active_controller_idx_;
     int nb_filters_; // Nb. of filters an individual controller have. This must be the same for all controllers in the pool.
-    int controller_type_;  // 0: Q-synthesis, 1: PI
+    std::string controller_type_str_;
+    int controller_type_;  // Q_synthesis: 0, PI: 1
 
     // internal states
     double state0_=0, state1_=0;
 public:
     /*! Initialize from a ROS parameter path
      *
-     * @param controller_path
+     * Individual controller are found then loaded.
+     *
+     * @param controller_path Path to the hybrid controller profile.
      */
-    ControllerManager(std::string controller_path){};
+    ControllerManager(std::string controller_path, ros::NodeHandle nh): active_controller_idx_(0) {
+
+        // controller type
+        if (!nh.getParam(controller_path + "/type", controller_type_str_))
+        {
+            ROS_ERROR_STREAM("Unable to load controller " << controller_path << " type. Are the controllers loaded?");
+        }
+        else {
+            ROS_INFO_STREAM("Loading a controller of [" << controller_type_str_ << "] type.");
+        }
+        if (controller_type_str_ == "Q_synthesis") controller_type_ = 0;
+        else if (controller_type_str_ == "PI") controller_type_ = 1;
+        else {
+            ROS_ERROR_STREAM("Unknown controller type: " << controller_type_str_ << " .Shutting down.");
+            ros::shutdown();
+        }
+
+        // load individual controllers
+        std::vector<std::string> all_controller_paths;
+        if (!nh.getParam(controller_path + "/controllers", all_controller_paths)){
+            ROS_ERROR_STREAM("Unable to load individual controllers of " << controller_path << ". Are the controllers loaded?");
+        }
+        else {
+            ROS_INFO_STREAM("Preparing to load " << all_controller_paths.size() << " individual controller!");
+        }
+
+        std::vector<double> b, a, taps;
+        std::vector<std::shared_ptr<DiscreteTimeFilter> > _controller_ptr;
+        bool ret;
+        for (int i = 0; i < all_controller_paths.size(); ++i) {
+            // if is a PI type controller
+            if (controller_type_str_ == "PI"){
+                ret = true;
+                ret = ret && nh.getParam(all_controller_paths[i] + "/filter00_a", a);
+                ret = ret && nh.getParam(all_controller_paths[i] + "/filter00_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                auto filter00 = std::make_shared<DiscreteTimeFilter>(b, a);
+
+                ret = ret && nh.getParam(all_controller_paths[i] + "/filter01_a", a);
+                ret = ret && nh.getParam(all_controller_paths[i] + "/filter01_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                auto filter01 = std::make_shared<DiscreteTimeFilter>(b, a);
+
+                _controller_ptr.clear();
+                _controller_ptr.push_back(filter00);
+                _controller_ptr.push_back(filter01);
+                controller_ptrs_pool_.push_back(_controller_ptr);
+            }
+
+            // if is a Q_synthesis type controller
+
+        }
+
+
+    };
 
     void compute(const std::vector<double> & inputs, double & output){
         if (controller_type_ == 0)
@@ -124,6 +181,12 @@ class HybridForceController {
     std::shared_ptr<InfInteraction::TopicDebugger> debugger_ptr_;
     int debug_w_id_, debug_y_id_, debug_u_id_, debug_q_id_, debug_q_cmd_id_;
 
+    // identificator
+    std::string identificator_ns_ = "identificator";
+    std::shared_ptr<InfInteraction::TopicDebugger> identificator_publisher_ptr_;
+    std::vector<double> identify_data_;
+    int identificator_pub_id_;
+
     // openrave
     OpenRAVE::EnvironmentBasePtr env_ptr_;
     OpenRAVE::RobotBasePtr robot_ptr_;
@@ -163,7 +226,7 @@ public:
      * @param nh
      */
     HybridForceController(ros::NodeHandle nh): nh_(nh), setpoints_(10, 0), cartesian_cmd_(3, 0), joint_cmd_(6, 0), joint_measure_(6, 0), force_measure_(3, 0),
-    safety_force_threshold_(20)
+    safety_force_threshold_(20), identify_data_(2)
     {
         ROS_INFO("-- Initializing Hybrid Force Controller");
 
@@ -181,6 +244,12 @@ public:
         try_load_param("search_velocity_mm_sec", search_velocity_mm_sec_, (double) 1);
         try_load_param("search_force_threshold", search_force_threshold_, (double) 2.0);
 
+        // load force controller first, so that assertion error is thrown without affecting other
+        force_controller_ptr_ = std::make_shared<ControllerManager>("/" + force_controller_id_, nh_);
+
+        // default force tracking level: 5N
+        setpoints_[2] = 2;
+
         // load hardware handles
         if (robot_control_method_ == "ros_control"){
             robot_hw_ptr_ = std::make_shared<HWHandle::JointPositionController> (robot_ns_, nh_);
@@ -193,8 +262,11 @@ public:
         ft_hw_ptr_ = std::make_shared<FTSensorHandle>(nh_, ft_topic_name_);
         if (debug_mode_)ft_hw_ptr_->set_debug(nh_);
 
+        // communication
         debugger_setup();
         setpoint_subscriber_setup();
+        identificator_publisher_ptr_ = std::make_shared<InfInteraction::TopicDebugger>(identificator_ns_, nh_);
+        identificator_pub_id_ = identificator_publisher_ptr_->register_multiarray("raw_data");
 
         // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
         OpenRAVE::RaveInitialize(true); // start openrave core
@@ -212,18 +284,14 @@ public:
         if (not ft_hw_ptr_->received_signal()){
             ROS_FATAL("Have not received any wrench signal. Shutting down.");
             ros::shutdown();
-            return;
         }
-        dVector wrench_offset;
+        DoubleVector wrench_offset;
         ft_hw_ptr_->get_latest_wrench(wrench_offset);
         ft_hw_ptr_->set_wrench_offset(wrench_offset);
 
         // set the robot's initial configuration before initializing force projection block
         robot_ptr_->SetActiveDOFValues(joint_init_);
         wrench2force_map_ptr_ = std::make_shared<InfInteraction::Wrench2CartForceProjector>(robot_ptr_, ft_frame_name_);
-
-        // force scheme
-        force_controller_ptr_ = std::make_shared<ControllerManager>("/" + force_controller_id_);
 
         // inverse kinematics map
         // Inverse Kinematics: Converts Cartesian signals to joint coordinates
@@ -278,6 +346,9 @@ public:
         int cy_idx = 0;  // cycle index
         int state_id; // state index, see below for details
         state_id = 1;
+//        state_id = 2;
+//        ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
+        double surface_height = 0;
 
         // two states loop designs
         //  [state 1] -> [states 2]
@@ -306,6 +377,7 @@ public:
                 if (force_measure_[2] > search_force_threshold_) {
                     ROS_INFO_STREAM("Vertical component of measured force: "<< force_measure_[2] << ". Touch down successfuly.");
                     state_id = 2;
+                    surface_height = cartesian_cmd_[2];
                 }
                 cartesian_cmd_[2] += - search_velocity_mm_sec_ * MM * Ts;  // rate = 1e-2 mm/sec
             }
@@ -329,14 +401,17 @@ public:
                 // form cartesian command
                 cartesian_cmd_[0] = setpoints_[0];
                 cartesian_cmd_[1] = setpoints_[1];
-                cartesian_cmd_[2] = force_controller_output_;
-
+                cartesian_cmd_[2] = surface_height + force_controller_output_;
             }
             else {
-                ROS_FATAL_STREAM("Encounter illegal state_id: " << state_id << ". Shutting down.");
+                ROS_FATAL_STREAM("Encounter illegal/non-action state_id: " << state_id << ". Shutting down.");
                 ros::shutdown();
-                break;
             }
+            //publish data for identification
+            // a 2-vector which contains the measured vertical force and the measured cartesian command
+            identify_data_[0] = force_measure_[2];
+            identify_data_[1] = cartesian_cmd_[2];
+            identificator_publisher_ptr_->publish_multiarray(identificator_pub_id_, identify_data_);
 
             // compute command to send
             position2joint_map_ptr_->set_state(joint_measure_);
@@ -352,7 +427,6 @@ public:
             robot_ptr_->SetActiveDOFValues(joint_cmd_); // update in openrave viewer
             clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
-
             // publish debug information
             if (debug_mode_) {
                 debugger_log();
@@ -363,6 +437,7 @@ public:
                     ROS_DEBUG_STREAM("wake - deadline-to-send: " << diff_nsec << " nsec (this value should be very small, ideally less than 1e4)");
                     RTUtils::diff_timespec(diff_nsec, slp_dline_spec, sent_spec);
                     ROS_DEBUG_STREAM("sent - deadline-to-send: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
+                    ROS_DEBUG_STREAM("current state: " << state_id);
                 }
             }
             cy_idx = (cy_idx + 1) % 2147483640;
@@ -416,6 +491,9 @@ int main(int argc, char **argv){
     ros::init(argc, argv, "hybrid_force_controller");
     ros::NodeHandle nh("~");
     HybridForceController controller(nh);
-    return controller.main();
+    if (!ros::isShuttingDown()){
+        controller.main();
+    }
+    return 0;
 }
 

@@ -21,7 +21,7 @@
 // RC8
 #include "denso_control/rc8_controller_interface.h"
 
-typedef std::vector<double> dVector;
+typedef std::vector<double> DoubleVector;
 typedef std_msgs::Float64MultiArray MultiArrayMsg;
 
 
@@ -53,10 +53,10 @@ public:
     // NOTE: virtual method allows derived class to call its implementation,
     // instead of the base class implementation.
     // compute an output, which is a vector, given an input which is also a vector
-    virtual dVector compute(const dVector & y_n) = 0;
+    virtual DoubleVector compute(const DoubleVector & y_n) = 0;
     // set the internal state of the block to x_n. This should be done before calling compute.
     // Mathematically, this object compute u_n as a function of y_n and x_n.
-    virtual void set_state(const dVector & x_n) = 0;
+    virtual void set_state(const DoubleVector & x_n) = 0;
     // virtual destructor allows Derived Classes to destroy its internal
     // states. This is always recommend when polymorphism is needed.
     // https://stackoverflow.com/questions/461203/when-to-use-virtual-destructors
@@ -72,7 +72,7 @@ namespace InfInteraction{
 class JointTorqueFromWrenchProjector: public SignalBlock {
     OpenRAVE::RobotBasePtr robot_ptr_;
     OpenRAVE::RobotBase::ManipulatorPtr ft_sensor_ptr_;
-    dVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
+    DoubleVector jacobian, jacobian_rot, jacobian_T, jacobian_rot_T,  // Translational and rotational Jacobians, transposed
             force, torque,  // input force_, torque
             tau1, tau2, tau, // projected torque
             joint_current_;  // current joint position
@@ -80,8 +80,8 @@ class JointTorqueFromWrenchProjector: public SignalBlock {
     OpenRAVE::RaveVector<double> rave_force_, rave_torque_, temp_vec_;
 public:
     JointTorqueFromWrenchProjector(OpenRAVE::RobotBasePtr robot_ptr, std::string ft_sensor_frame);
-    dVector compute(const dVector & wrench_measure);
-    void set_state(const dVector & joint_measure);
+    DoubleVector compute(const DoubleVector & wrench_measure);
+    void set_state(const DoubleVector & joint_measure);
     virtual int get_input_size() {return 6;};
     virtual int get_output_size() {return 6;};
     virtual int get_state_size() {return 6;};
@@ -102,8 +102,8 @@ class Wrench2CartForceProjector: public SignalBlock {
     OpenRAVE::geometry::RaveVector<double> force_, force_rotated_;
 public:
     Wrench2CartForceProjector(OpenRAVE::RobotBasePtr robot_ptr, std::string ft_frame_name);
-    dVector compute(const dVector & wrench_measure);
-    void set_state(const dVector & dummy_var);
+    DoubleVector compute(const DoubleVector & wrench_measure);
+    void set_state(const DoubleVector & dummy_var);
 };
 
 
@@ -119,8 +119,8 @@ class ControllerCollection: public SignalBlock {
     unsigned int nb_controllers;
 public:
     ControllerCollection(std::vector<std::shared_ptr<SignalBlock > > controllers_);
-    dVector compute(const dVector & x_n);
-    void set_state(const dVector & x_n);
+    DoubleVector compute(const DoubleVector & x_n);
+    void set_state(const DoubleVector & x_n);
 };
 
 /*! A feedback interconnection with delayed feedback route.
@@ -132,24 +132,24 @@ public:
  */
 class DelayFeedback: public SignalBlock {
     std::shared_ptr<SignalBlock> _fwd_block, _fb_block;
-    dVector y_last;
+    DoubleVector y_last;
     unsigned int _input_size;
     int _sign;
 public:
     DelayFeedback(std::shared_ptr<SignalBlock> fwd_block, std::shared_ptr<SignalBlock> fb_block, int sign=-1);
-    dVector compute(const dVector & x_n);
-    void set_state(const dVector & x_n) {};
+    DoubleVector compute(const DoubleVector & x_n);
+    void set_state(const DoubleVector & x_n) {};
 };
 
 // A Block that simply offset the input by an initially given vector.
 class SimpleOffset: public SignalBlock {
-    dVector offset;
+    DoubleVector offset;
 public:
-    SimpleOffset(const dVector & offset_);
+    SimpleOffset(const DoubleVector & offset_);
     // Always return a vector that has the same size as the input vector. Each element in the new vector is
     // offset by the corresponding element in the internal offset vector.
-    dVector compute(const dVector & y_n);
-    void set_state(const dVector & x_n);
+    DoubleVector compute(const DoubleVector & y_n);
+    void set_state(const DoubleVector & x_n);
 };
 
 
@@ -162,7 +162,7 @@ public:
  * and update jnt_pos_current before calling compute to obtain another joint position.
  */
  class CartPositionTracker: public SignalBlock {
-     dVector _jnt_pos_current,  /* Current robot joint position */
+     DoubleVector _jnt_pos_current,  /* Current robot joint position */
              _jnt_pos_init,     /* Initial robot joint position */
              jnt_pos_save_; /* Temporary vector to store data */
      OpenRAVE::RaveVector<OpenRAVE::dReal>
@@ -181,7 +181,7 @@ public:
       * @param gam
       * @param gam2
       */
-     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, dVector jnt_pos_init, double gam=0.0, double gam2=0.0);
+     CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::string manip_frame, DoubleVector jnt_pos_init, double gam=0.0, double gam2=0.0);
 
      /*! \brief Compute joint values that track the given the Cartesian position pos_n.
       *
@@ -190,33 +190,41 @@ public:
       *
       * \param pos_n Cartesian position of the end-effector w.r.t to the initial Cartesian position.
       * */
-     dVector compute(const dVector & pos_n);
-     void set_state(const dVector & jnt_pos_n);
+     DoubleVector compute(const DoubleVector & pos_n);
+     void set_state(const DoubleVector & jnt_pos_n);
  };
 
 
- /* A convenient class for publishing messages for debugging or logging with simple usage.
-  * Register the topic by name, then publish messages from STL Vector<double>.
+ /*! Convenient class for publishing MultiArray ROS msgs.
+  *
+  * Usage is simple. Register topic by name, then publish messages from double STL vectors.
   */
  class TopicDebugger {
-     std::vector<std::shared_ptr<ros::Publisher > > pub_vecs; /* Publishers vector */
-     std::string debug_ns;  /*Base namespace*/
-     ros::NodeHandle nh;
+     std::vector<std::shared_ptr<ros::Publisher > > publisher_ptr_vector_;
+     std::string base_ns_;  // Base namespace
+     ros::NodeHandle nh_;
 
  public:
-     TopicDebugger(std::string debug_ns, ros::NodeHandle & node_handle);
+     /*! Initialization
+      *
+      * @param base_ns Base namespace appended to the front of published topic.
+      * @param nh Node handle.
+      */
+     TopicDebugger(std::string base_ns, ros::NodeHandle & nh);
      /*! Register new topic
       *
       * @param topic_name
       * @return topic index.
       */
      int register_multiarray(std::string topic_name);
-     /*! Publish message on selected topic
+     /*! Publish message using topic id.
+      *
+      * If topic_id is invalid, do nothing.
       *
       * @param topic_id
       * @param data
       */
-     void publish_multiarray(int topic_id, const dVector & data);
+     void publish_multiarray(int topic_id, const DoubleVector & data);
  };
 }
 
@@ -284,21 +292,21 @@ public:
 class FIRsrfb: public SignalBlock {
     unsigned int T, ny, nu, /*FIR banks shape*/
             yidx = 0, uidx = 0, ybank_sz, ubank_sz;  /*Current index of y[n][0] and u[n][0] respectively.*/
-    dVector L, MB2,   /*FIR coefficients in row-order*/
+    DoubleVector L, MB2,   /*FIR coefficients in row-order*/
             ybank, ubank,  /*Storage banks*/
             alpha, beta, un;  /*temp*/
 
     // initialize filter internal variables (input and output banks, etc)
     // This function should only be used in a constructor.
-    void init_filter(dVector uinit);
+    void init_filter(DoubleVector uinit);
 
 public:
     // initialize the filter with zero initial output
-    FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_);
+    FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, DoubleVector L_, DoubleVector MB2_);
     // initialize the filter with initial outputs being uinit for all time steps
-    FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, dVector L_, dVector MB2_, dVector uinit);
-    dVector compute(const dVector & y_n);  /*See class docstring*/
-    void set_state(const dVector & x_n);
+    FIRsrfb(unsigned int T_, unsigned int ny_, unsigned int nu_, DoubleVector L_, DoubleVector MB2_, DoubleVector uinit);
+    DoubleVector compute(const DoubleVector & y_n);  /*See class docstring*/
+    void set_state(const DoubleVector & x_n);
 };
 
 
@@ -337,8 +345,8 @@ class DiscreteTimeFilter: public SignalBlock {
     int n;       /* Current memory index. */
     int mem_sz;  /* Both memory banks, input and output banks, have `mem_sz` numbers. */
     /*! Store the last (order)-th inputs and outputs */
-    dVector x_mem, y_mem;
-    dVector b, a; // Coefficients of the filter. If is a FIR, a is unit.
+    DoubleVector x_mem, y_mem;
+    DoubleVector b, a; // Coefficients of the filter. If is a FIR, a is unit.
 public:
     /*! Initialize a standard ccde.
      *
@@ -347,12 +355,12 @@ public:
      * \param y_initial_val initial condition of the output. NOTE: initial condition 
                             of input is default to zero.
      */
-    DiscreteTimeFilter(dVector b_in, dVector a_in, double y_initial_val=0);
+    DiscreteTimeFilter(DoubleVector b_in, DoubleVector a_in, double y_initial_val=0);
     /*! Initialize a FIR filter.
      *
      * \param taps Taps of the filter.
      */
-    DiscreteTimeFilter(dVector taps);
+    DiscreteTimeFilter(DoubleVector taps);
     /*! Compute the output in the next time step.
      *
      *
@@ -360,8 +368,8 @@ public:
      * @return y_n
      */
     double compute(double x_n);
-    dVector compute(const dVector & x_n);
-    void set_state(const dVector & x_n);
+    DoubleVector compute(const DoubleVector & x_n);
+    void set_state(const DoubleVector & x_n);
     /*! Copy the internal state of the given filter.
      *
      * @param other_filter
@@ -382,7 +390,7 @@ class FTSensorHandle {
     double fx, fy, fz, tx, ty, tz;
     std::vector<double> wrench_offset;
     std::vector<DiscreteTimeFilter> lp_filters;
-    dVector b, a; /*!filter coefficients*/
+    DoubleVector b, a; /*!filter coefficients*/
     bool debug = false;
     ros::Publisher wrench_pub_debug;  // publisher for debugging
     ros::Subscriber ft_subscriber;
@@ -400,13 +408,13 @@ public:
      * from topic `ft_topic` and update its internal data members (fx, fy, fz, tx, ty, tz) respectively.
      */
     FTSensorHandle(ros::NodeHandle & nh, std::string ft_topic);
-    explicit FTSensorHandle(const dVector &wrench_offset_input);; // with non-zero offset values
-    FTSensorHandle(const dVector &wrench_offset_input, dVector b_in, dVector a_in); // with offset and low-pass filter
+    explicit FTSensorHandle(const DoubleVector &wrench_offset_input);; // with non-zero offset values
+    FTSensorHandle(const DoubleVector &wrench_offset_input, DoubleVector b_in, DoubleVector a_in); // with offset and low-pass filter
     void signal_callback(const geometry_msgs::WrenchStampedConstPtr &msg);
-    void get_latest_wrench(dVector &force, dVector &torque);
-    void get_latest_wrench(dVector &wrench);
+    void get_latest_wrench(DoubleVector &force, DoubleVector &torque);
+    void get_latest_wrench(DoubleVector &wrench);
     void set_debug(ros::NodeHandle &nh);
-    void set_wrench_offset(dVector wrench_offset_);
+    void set_wrench_offset(DoubleVector wrench_offset_);
     void log_latest_wrench(const std_msgs::Header &);
     bool received_signal();
 };
@@ -483,7 +491,7 @@ class JointPositionHandler{
 public:
     JointPositionHandler();
     void signal_callback(const sensor_msgs::JointStateConstPtr &msg);
-    dVector get_latest_jnt();
+    DoubleVector get_latest_jnt();
     bool received_msg();
 };
 

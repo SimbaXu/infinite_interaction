@@ -23,7 +23,7 @@ void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
     viewer->main(showgui);
 }
 
-void print_6dvec(dVector v){
+void print_6dvec(DoubleVector v){
     std::cout
             << v[0] << ", "
             << v[1] << ", "
@@ -49,23 +49,23 @@ TEST(CartTracker, visual){
     auto manip_ptr = robot_ptr->GetManipulator(manip_name);
 
     // Fed the same position 100 times
-    std::vector<dVector > cart_poss; // desired cart positions
+    std::vector<DoubleVector > cart_poss; // desired cart positions
     double dx = -0.1, dy = 0.05, dz=-0.035;
     for (int i=0; i < 100; ++i){
-        cart_poss.push_back(dVector {dx, dy, dz});
+        cart_poss.push_back(DoubleVector {dx, dy, dz});
     }
 
     // Desired value
-    dVector jnt_pos_init = {0, 0.57, .9, 0.2, 0, 0}; // initial position
+    DoubleVector jnt_pos_init = {0, 0.57, .9, 0.2, 0, 0}; // initial position
     robot_ptr->SetActiveDOFValues(jnt_pos_init);
     auto T_wee_init = manip_ptr->GetTransform();
     auto pose_init = T_wee_init.rot;
-    robot_ptr->SetActiveDOFValues(dVector {0, 0, 0, 0, 0, 0}); // reset the robot to the zero psotion
+    robot_ptr->SetActiveDOFValues(DoubleVector {0, 0, 0, 0, 0, 0}); // reset the robot to the zero psotion
 
     // Cartesian Tracker
     std::shared_ptr<InfInteraction::CartPositionTracker> position_map_ptr =
             std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr, manip_name, jnt_pos_init);
-    dVector jnt_pos_cur = jnt_pos_init;
+    DoubleVector jnt_pos_cur = jnt_pos_init;
     for (int i=0; i < cart_poss.size(); ++i){
         position_map_ptr->set_state(jnt_pos_cur);
         jnt_pos_cur = position_map_ptr->compute(cart_poss[i]);

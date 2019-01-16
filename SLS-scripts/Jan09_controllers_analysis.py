@@ -1,24 +1,10 @@
+""" A program for analyzing multiple controllers for force control.
+"""
 import SLSsyn as Ss
 import control as co
 import numpy as np
 import matplotlib.pyplot as plt
-import Jan09_model_derivation as mo
-
-
-class Controllers:
-    @staticmethod
-    def PI_v1(Kp, Ki):
-        s = co.tf([1, 0], [1])
-        K_ctime_single = Kp + Ki / s
-        K_dtime_single = co.c2d(K_ctime_single, 0.008)
-        PI_v1 = - Ss.tf_blocks([[K_dtime_single, - K_dtime_single]])
-        return PI_v1
-
-    @staticmethod
-    def Qsyn(filename="Jan09_K_ss_params.npz"):
-        data = np.load(filename)
-        K = co.StateSpace(data['A'], data['B'], data['C'], data['D'], data['dt'])
-        return K
+import Jan09_plant_pool as mo
 
 
 if __name__ == '__main__':
@@ -26,8 +12,8 @@ if __name__ == '__main__':
     s = co.tf([1, 0], [1])
 
     Pz_design = mo.PlantV1.plant()
-    # c0 = Controllers.PI_v1(1e-3, 20e-3)
-    c0 = Controllers.Qsyn()
+    c0 = mo.Controllers.PI_v1(1e-3, 20e-3)
+    # c0 = Controllers.Qsyn()
 
     analysis_dict = {
         'row_col': (2, 2),

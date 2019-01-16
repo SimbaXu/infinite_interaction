@@ -24,7 +24,7 @@ InfInteraction::JointTorqueFromWrenchProjector::JointTorqueFromWrenchProjector(O
     InfInteraction::JointTorqueFromWrenchProjector::tau.resize(6);
 }
 
-dVector InfInteraction::JointTorqueFromWrenchProjector::compute(const dVector &wrench_measure) {
+DoubleVector InfInteraction::JointTorqueFromWrenchProjector::compute(const DoubleVector &wrench_measure) {
     // lock environment, then change robot dof
     boost::recursive_mutex::scoped_lock lock(robot_ptr_->GetEnv()->GetMutex());
     robot_ptr_->SetActiveDOFValues(joint_current_);
@@ -51,7 +51,7 @@ dVector InfInteraction::JointTorqueFromWrenchProjector::compute(const dVector &w
     return tau;
 }
 
-void InfInteraction::JointTorqueFromWrenchProjector::set_state(const dVector &joint_measure) {
+void InfInteraction::JointTorqueFromWrenchProjector::set_state(const DoubleVector &joint_measure) {
     joint_current_ = joint_measure;
 }
 
@@ -66,36 +66,36 @@ controllers(controllers_) {
     }
 }
 
-dVector InfInteraction::ControllerCollection::compute(const dVector &x_n) {
-    dVector y_n(nb_controllers), y_ ;
+DoubleVector InfInteraction::ControllerCollection::compute(const DoubleVector &x_n) {
+    DoubleVector y_n(nb_controllers), y_ ;
     for (unsigned int i = 0; i < nb_controllers; ++i) {
         // run each filter over the given input individually
-        y_ = controllers[i]->compute(dVector {x_n[i]});
+        y_ = controllers[i]->compute(DoubleVector {x_n[i]});
         y_n[i] = y_[0];
     }
     return y_n;
 }
 
-void InfInteraction::ControllerCollection::set_state(const dVector &x_n) {
+void InfInteraction::ControllerCollection::set_state(const DoubleVector &x_n) {
     // Do nothing
 }
 
-InfInteraction::SimpleOffset::SimpleOffset(const dVector &offset_) {
+InfInteraction::SimpleOffset::SimpleOffset(const DoubleVector &offset_) {
     offset.resize(offset_.size());
     for(unsigned int i=0; i < offset.size(); i++){
         offset[i] = offset_[i];
     }
 }
 
-dVector InfInteraction::SimpleOffset::compute(const dVector &y_n) {
-    dVector y_offset = y_n;
+DoubleVector InfInteraction::SimpleOffset::compute(const DoubleVector &y_n) {
+    DoubleVector y_offset = y_n;
     for(unsigned int i=0; i < y_offset.size() && i < offset.size(); i++){
         y_offset[i] += offset[i];
     }
     return y_offset;
 }
 
-void InfInteraction::SimpleOffset::set_state(const dVector &x_n) {
+void InfInteraction::SimpleOffset::set_state(const DoubleVector &x_n) {
     // Do nothing
 }
 
@@ -104,20 +104,20 @@ InfInteraction::Wrench2CartForceProjector::Wrench2CartForceProjector(OpenRAVE::R
     T_wee_ = robot_ptr->GetManipulator(ft_frame_name)->GetEndEffectorTransform();
 }
 
-dVector InfInteraction::Wrench2CartForceProjector::compute(const dVector &wrench_measure) {
+DoubleVector InfInteraction::Wrench2CartForceProjector::compute(const DoubleVector &wrench_measure) {
     force_.x = wrench_measure[0];
     force_.y = wrench_measure[1];
     force_.z = wrench_measure[2];
 
     force_rotated_ = T_wee_.rotate(force_);
-    return dVector {force_rotated_.x, force_rotated_.y, force_rotated_.z};
+    return DoubleVector {force_rotated_.x, force_rotated_.y, force_rotated_.z};
 }
 
-void InfInteraction::Wrench2CartForceProjector::set_state(const dVector &dummy_var) {
+void InfInteraction::Wrench2CartForceProjector::set_state(const DoubleVector &dummy_var) {
     // Do nothing
 }
 
-InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string manip_frame, dVector jnt_pos_init, double gam, double gam2):
+InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr robot_ptr_, std::__cxx11::string manip_frame, DoubleVector jnt_pos_init, double gam, double gam2):
         robot_ptr(robot_ptr_), _jnt_pos_current(jnt_pos_init), _jnt_pos_init(jnt_pos_init), _gam2(gam2), _gam(gam)
 {
     // lock
@@ -137,7 +137,7 @@ InfInteraction::CartPositionTracker::CartPositionTracker(OpenRAVE::RobotBasePtr 
     }
 }
 
-dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
+DoubleVector InfInteraction::CartPositionTracker::compute(const DoubleVector &pos_n) {
     // lock
     boost::recursive_mutex::scoped_lock lock(robot_ptr->GetEnv()->GetMutex());
     robot_ptr->GetActiveDOFValues(jnt_pos_save_); // save current dof value to restore later
@@ -149,7 +149,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     // pos_cur = _pos_init + pos_n
     auto dpos_rave = _pos_init + pos_n_rave - T_wee_cur.trans;
     auto dquat_rave = _quat_init - T_wee_cur.rot;
-    dVector J_trans_arr, J_rot_arr;
+    DoubleVector J_trans_arr, J_rot_arr;
     manip_ptr->CalculateJacobian(J_trans_arr);
     manip_ptr->CalculateRotationJacobian(J_rot_arr);
 
@@ -177,6 +177,8 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     // Coefficient t4 is to encourgate the robot to keep its
     // initial configuration. A side-effect of this term is that the robot would try to move back
     // to the initial configuration when there is no force_ acting on it. gam2 is set to 0.01
+    //
+    // Fixed bounds dqmin, dqmax are fixed at magnitude 0.1 rad.
 
     // Form Quadratic objective: 0.5 x^T H x + g^T x
     Eigen::Matrix<double, 6, 6, Eigen::RowMajor> H;
@@ -187,7 +189,7 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     g = - 2 * J_trans.transpose() * dpos - 2 * J_rot.transpose() * dquat - 2 * _gam2 * (eigen_jnt_pos_init - eigen_jnt_pos_current);
 
     // Form fixed bounds -0.1 <= dq <= 0.1 and joint limits constraints
-    dVector dqmin(6), dqmax(6), qlow, qhigh;
+    DoubleVector dqmin(6), dqmax(6), qlow, qhigh;
     robot_ptr->GetActiveDOFLimits(qlow, qhigh);
     for(int i=0; i < 6; i++){
         dqmin[i] = MAX(qlow[i] - _jnt_pos_current[i], -0.1);
@@ -201,10 +203,10 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     qp_instance.setOptions(options);
     int nWSR = 100;
     qpOASES::returnValue ret = qp_instance.init(H.data(), g.data(), NULL, dqmin.data(), dqmax.data(), NULL, NULL, nWSR, 0);
-    dVector dq(6);
+    DoubleVector dq(6);
 
     // check result and set joint command
-    dVector jnt_pos_cmd;
+    DoubleVector jnt_pos_cmd;
     if (ret == qpOASES::returnValue::SUCCESSFUL_RETURN){
         qpOASES::real_t dq_opt[6];
         qp_instance.getPrimalSolution(dq_opt);
@@ -228,13 +230,13 @@ dVector InfInteraction::CartPositionTracker::compute(const dVector &pos_n) {
     return jnt_pos_cmd;
 }
 
-void InfInteraction::CartPositionTracker::set_state(const dVector &jnt_pos_n) {
+void InfInteraction::CartPositionTracker::set_state(const DoubleVector &jnt_pos_n) {
     _jnt_pos_current = jnt_pos_n;
 }
 
 
-dVector InfInteraction::DelayFeedback::compute(const dVector &x_n) {
-    dVector alpha, beta(_input_size), y_n;
+DoubleVector InfInteraction::DelayFeedback::compute(const DoubleVector &x_n) {
+    DoubleVector alpha, beta(_input_size), y_n;
     alpha = _fb_block->compute(y_last);
     for(int i; i < _input_size; i++){
         beta[i] = x_n[i] + _sign * alpha[i];

@@ -8,13 +8,13 @@
 
 // impulse L is zero, expect zero output
 TEST(FIR, zeroL_scalar){
-    dVector L {0, 0, 0, 0}, MB2{0, -2, 3, 5};
+    DoubleVector L {0, 0, 0, 0}, MB2{0, -2, 3, 5};
 
     FIRsrfb controller (4, 1, 1, L, MB2);  // 4-steps horizon
-    dVector yin{0, 2, 3, 9, 2, 3};
-    dVector u_n;
+    DoubleVector yin{0, 2, 3, 9, 2, 3};
+    DoubleVector u_n;
     for (int i = 0; i < yin.size(); ++i) {
-        dVector y_n{yin[i]};
+        DoubleVector y_n{yin[i]};
         u_n = controller.compute(y_n);
         EXPECT_EQ(u_n[0], 0);
     }
@@ -22,12 +22,12 @@ TEST(FIR, zeroL_scalar){
 
 // impulse L is zero, expect zero output
 TEST(FIR, zeroL_multi){
-    dVector L {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, MB2{0, 0, 0, 0, -2, 3, 5, 2, 3, 4, 5, 2};
+    DoubleVector L {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, MB2{0, 0, 0, 0, -2, 3, 5, 2, 3, 4, 5, 2};
 
     FIRsrfb controller (3, 2, 2, L, MB2);  // 4-steps horizon
-    dVector yin{0, 2, 3, 9, 2, 3}, yin2{2, 3, 9, 0, 2, 3}, u_n;
+    DoubleVector yin{0, 2, 3, 9, 2, 3}, yin2{2, 3, 9, 0, 2, 3}, u_n;
     for (int i = 0; i < yin.size(); ++i) {
-        dVector y_n{yin[i], yin2[i]};
+        DoubleVector y_n{yin[i], yin2[i]};
         u_n = controller.compute(y_n);
         EXPECT_EQ(u_n[0], 0);
         EXPECT_EQ(u_n[1], 0);
@@ -37,13 +37,13 @@ TEST(FIR, zeroL_multi){
 // impulse MB2 is zero, expect feedthrough by L
 TEST(FIR, zeroMB2_scalar){
     // if the L impulse is zero, expect zero output
-    dVector L {2, 0, 0, 0}, MB2{0, 0, 0, 0};
+    DoubleVector L {2, 0, 0, 0}, MB2{0, 0, 0, 0};
 
     FIRsrfb controller (4, 1, 1, L, MB2);  // 4-steps horizon
-    dVector yin{0, 2, 3, 9, 2, 3};
-    dVector u_n;
+    DoubleVector yin{0, 2, 3, 9, 2, 3};
+    DoubleVector u_n;
     for (int i = 0; i < yin.size(); ++i) {
-        dVector y_n{yin[i]};
+        DoubleVector y_n{yin[i]};
         u_n = controller.compute(y_n);
         EXPECT_EQ(u_n[0], 2 * yin[i]);
     }
@@ -53,13 +53,13 @@ TEST(FIR, zeroMB2_scalar){
 // impulse MB2 is zero, expect feedthrough by L
 TEST(FIR, zeroMB2_scalar_case2){
     // if the L impulse is zero, expect zero output
-    dVector L {1, 1, 0, 0}, MB2{0, 0, 0, 0};
+    DoubleVector L {1, 1, 0, 0}, MB2{0, 0, 0, 0};
 
     FIRsrfb controller (4, 1, 1, L, MB2);  // 4-steps horizon
-    dVector yin{0, 2, 3, 9, 2, 3}, udesired{0, 2, 5, 12, 11, 5};
-    dVector u_n;
+    DoubleVector yin{0, 2, 3, 9, 2, 3}, udesired{0, 2, 5, 12, 11, 5};
+    DoubleVector u_n;
     for (int i = 0; i < yin.size(); ++i) {
-        dVector y_n{yin[i]};
+        DoubleVector y_n{yin[i]};
         u_n = controller.compute(y_n);
         EXPECT_EQ(udesired[i], u_n[0]);
     }
@@ -87,12 +87,12 @@ TEST(FIR, zeroMB2_multi){
 //t, u, x = co.forced_response(CLz, np.arange(len(y)), y)
 //print(u)  # got this:  [[   0.    0.    2.   11.   37.   60.  -12. -367. -949.]]
 TEST(FIR, general_scalar){
-    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
+    DoubleVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
     FIRsrfb controller (4, 1, 1, L, MB2);  // 4-steps horizon
-    dVector y{0, 2, 3, 9, 2, 3, 10, 20, 100}, udesired{0, 0, 2, 11, 37, 60, -12, -367, -949};
-    dVector ui;
+    DoubleVector y{0, 2, 3, 9, 2, 3, 10, 20, 100}, udesired{0, 0, 2, 11, 37, 60, -12, -367, -949};
+    DoubleVector ui;
     for (int i = 0; i < y.size(); ++i) {
-        ui = controller.compute(dVector {y[i]});
+        ui = controller.compute(DoubleVector {y[i]});
         EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
     }
 }
@@ -122,12 +122,12 @@ TEST(FIR, general_scalar){
 //u = uout[Nbuf:]
 //print(u)  # got this: [-15.0, -50.0, -65.5, 101.0, 669.5, 1392.5, 305.5, -6892.0, -21614.0]
 TEST(FIR, scalar_initial_cond){
-    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5}, uinit{2.5};
+    DoubleVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5}, uinit{2.5};
     FIRsrfb controller (4, 1, 1, L, MB2, uinit);  // 4-steps horizon
-    dVector y{0, 2, 3, 9, 2, 3, 10, 20, 1}, udesired{-15.0, -50.0, -65.5, 101.0, 669.5, 1392.5, 305.5, -6892.0, -21614.0};
-    dVector ui;
+    DoubleVector y{0, 2, 3, 9, 2, 3, 10, 20, 1}, udesired{-15.0, -50.0, -65.5, 101.0, 669.5, 1392.5, 305.5, -6892.0, -21614.0};
+    DoubleVector ui;
     for (int i = 0; i < y.size(); ++i) {
-        ui = controller.compute(dVector {y[i]});
+        ui = controller.compute(DoubleVector {y[i]});
         EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
     }
 }
@@ -164,7 +164,7 @@ TEST(FIR, scalar_initial_cond){
 // u2 = alpha2 - beta2
 
 TEST(FIR, general_multi){
-    dVector L {5, 0, 3, 3, 7, 9, 3, 5, 2, 4, 7, 6, 8, 8, 1, 6, 7, 7, 8, 1, 5, 9, 8, 9},
+    DoubleVector L {5, 0, 3, 3, 7, 9, 3, 5, 2, 4, 7, 6, 8, 8, 1, 6, 7, 7, 8, 1, 5, 9, 8, 9},
             MB2 {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 3, 3, 7, 0, 1, 9, 9, 0, 4, 7, 3,
                  2, 7, 2, 0, 0, 4, 5, 5, 6, 8, 4, 1, 4, 9};
     std::vector<std::vector<double > > yin = {{8, 1}, {1, 7}, {9, 9}, {3, 6}, {7, 2}},
@@ -176,7 +176,7 @@ TEST(FIR, general_multi){
     FIRsrfb controller (4, 2, 3, L, MB2);
     // (T, nu, ny) = (4, 3, 2)
     for (int i=0; i < yin.size(); ++i){
-        dVector ui = controller.compute(yin[i]);
+        DoubleVector ui = controller.compute(yin[i]);
         for(int j=0; j < 3; ++j){
             EXPECT_DOUBLE_EQ(udesired[i][j], ui[j]) << "Fail at i=" << i << ", j=" << j;
         }
@@ -185,7 +185,7 @@ TEST(FIR, general_multi){
 
 
 TEST(FIR, badinput_MB2_0_nonzero){
-    dVector L {0, 1, 2, 3}, MB2{1, -2};
+    DoubleVector L {0, 1, 2, 3}, MB2{1, -2};
      EXPECT_THROW(
             {
                 try {
@@ -201,7 +201,7 @@ TEST(FIR, badinput_MB2_0_nonzero){
 
 // throw exception if the input vectors have wrong shape
 TEST(FIR, badinput_wrongshape){
-    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
+    DoubleVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
     EXPECT_THROW(
             {
                 try {
@@ -218,7 +218,7 @@ TEST(FIR, badinput_wrongshape){
 
 // throw exception if the input vectors have wrong shape
 TEST(FIR, badinput_wrongshape_L){
-    dVector L (2 * 3 * 2 - 1), MB2 (2 * 2 * 2);
+    DoubleVector L (2 * 3 * 2 - 1), MB2 (2 * 2 * 2);
     int T = 2, ny = 3, nu = 2;
     EXPECT_THROW(
             {
@@ -238,33 +238,33 @@ TEST(FIR, badinput_wrongshape_L){
 TEST(LTI, basic){
     typedef std::shared_ptr<SignalBlock> LTI_ptr;
     std::vector<LTI_ptr> ctrl_vecptr;
-    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {1}, dVector {1, -1}));
-    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(dVector {0}, dVector {1, -0.99}, 10));
-    dVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
+    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(DoubleVector {1}, DoubleVector {1, -1}));
+    ctrl_vecptr.push_back(std::make_shared<DiscreteTimeFilter>(DoubleVector {0}, DoubleVector {1, -0.99}, 10));
+    DoubleVector L {0, 1, 2, 3}, MB2{0, -2, 3, 5};
     ctrl_vecptr.push_back(std::make_shared<FIRsrfb>(4, 1, 1, L, MB2));
 
     // test filter number zero
-    dVector uout(10);
-    uout = ctrl_vecptr[0]->compute(dVector {1});
+    DoubleVector uout(10);
+    uout = ctrl_vecptr[0]->compute(DoubleVector {1});
     EXPECT_EQ(uout[0], 1.0);
-    uout = ctrl_vecptr[0]->compute(dVector {1.5});
+    uout = ctrl_vecptr[0]->compute(DoubleVector {1.5});
     EXPECT_EQ(uout[0], 2.5);
-    uout = ctrl_vecptr[0]->compute(dVector {-2.5});
+    uout = ctrl_vecptr[0]->compute(DoubleVector {-2.5});
     EXPECT_EQ(uout[0], 0);
 
     // test filter number 1
-    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    uout = ctrl_vecptr[1] ->compute(DoubleVector {2});
     EXPECT_DOUBLE_EQ(9.9, uout[0]);
-    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    uout = ctrl_vecptr[1] ->compute(DoubleVector {2});
     EXPECT_DOUBLE_EQ(0.99 * 9.9, uout[0]);
-    uout = ctrl_vecptr[1] ->compute(dVector {2});
+    uout = ctrl_vecptr[1] ->compute(DoubleVector {2});
     EXPECT_DOUBLE_EQ(0.99 * 0.99 * 9.9, uout[0]);
 
     // test filter number 2
-    dVector y{0, 2, 3, 9, 2, 3, 10, 20, 100}, udesired{0, 0, 2, 11, 37, 60, -12, -367, -949};
-    dVector ui;
+    DoubleVector y{0, 2, 3, 9, 2, 3, 10, 20, 100}, udesired{0, 0, 2, 11, 37, 60, -12, -367, -949};
+    DoubleVector ui;
     for (int i = 0; i < y.size(); ++i) {
-        ui = ctrl_vecptr[2]->compute(dVector {y[i]});
+        ui = ctrl_vecptr[2]->compute(DoubleVector {y[i]});
         EXPECT_EQ(udesired[i], ui[0]) << "Error at i=" << i;
     }
 }
