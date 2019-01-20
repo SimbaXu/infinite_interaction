@@ -19,11 +19,12 @@ import SLSsyn as Ss
 class PlantV1:
     """ Point robot with attached spring.
 
-    robot -- spring -- environment.
+    The robot has flexible link. At the tip of the link there is a FT sensor. The tool attached to
+    the FT sensor is also flexible.
 
     Signal descriptions:
-        outputs = [fm, x, y1, y2]
-        inputs = [fd, xe, n, u1]
+        inputs = [f_desired, x_env, f_noise, f_robust, w_add, u]
+        outputs = [f_measure, x_env_diff, x_robot, z_add, y1, y2]
     """
     gen_exp_file = "PlantV1_gen_exp"
     z_idx_map = {
@@ -33,20 +34,24 @@ class PlantV1:
         0: 'fd', 1: 'xe', 2: 'n', 3: 'fro'
     }
 
+    input_descriptions = ['f_desired', 'x_env', 'f_noise', 'f_robust', 'w_add', 'u']
+    # output_descriptions = ['f_measure', 'x_env_diff', 'x_robot', 'z_add', 'y1', 'y2']
+    output_descriptions = ['f_measure', 'x_tip', 'x_link', 'x_robot']
     @staticmethod
-    def plant(tau_R1=0.0437, ke=10e3, br=10, kr=500, mr=0.05, Ts=0.008):
-        import SLSsyn as Ss
+    def plant(tau_R1=0.0437, K_env=10e3, omega_add=1,
+              b_link=200, k_link=100e3, m_link=13,
+              k_tip=100e4, b_tip=5000, m_tip=0.1, Ts=0.008):
+        """Apply dynamic parameters.
+
+        k_link, b_link and m_link are tuned so that the step response
+        of the measure force to robot postion command is almost identical to
+        the trajectories recorded in this bag: `2018-01-18-e1.bag`.
+        """
+
         # constant transfer function
         z = co.tf([1, 0], [1], Ts)
         s = co.tf([1, 0], [1])
-
-        # # discretization function
-        # def dist(exp):
-        #     if type(exp) == float:
-        #         return exp
-        #     return co.c2d(exp, Ts)
-
-        R1 = 1 / (1 + tau_R1 * s)
+        R1 = 1 / (1 + tau_R1 * s)  # robot first-order response
 
         with open(PlantV1.gen_exp_file, 'r') as f:
             expr_string = f.read()
@@ -61,68 +66,85 @@ class PlantV1:
         See Muji, p.10, Model force-control
         """
         # dynamic symbols
-        x, v, c, xe, ke, xr, vr = sym.symbols('x, v, c, xe, ke, xr, vr')
-        # tool position, velocity and command
-        # environment position, stiffness
-        # robot position and velocity
-        kr, br, mr, s = sym.symbols('kr, br, mr, s')  # tool stiffness, damping, mass and Laplace' s
-        fm, fd, n = sym.symbols('fm fd n')  # measured force, desired force, noise
-        f, R1 = sym.symbols('f R1')  # acting force, p2p transfer function
-        Ts = sym.symbols('Ts')  # sampling time
-        fro, xro = sym.symbols('fro, xro')  # force and displacement for robust stability
+        symbols_dynamic_string = 'v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust'
+        v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust = sym.symbols(symbols_dynamic_string)
+        symbols_dynamic_all = sym.symbols(symbols_dynamic_string)
 
-        # annotated symbols
-        y1, y2, z1, z2, z3, u1, w1, w2, w3 = sym.symbols('y1, y2, z1, z2, z3, u1, w1, w2, w3')
+        # physical symbols
+        K_env, omega_add, m_link, k_link, b_link, R1 = sym.symbols("K_env, omega_add, m_link, k_link, b_link, R1")
+        m_tip, k_tip, b_tip = sym.symbols("m_tip, k_tip, b_tip ")
 
+        # misc symbols
+        s, Ts = sym.symbols('s Ts')
+
+        # symbols_input = [f_desired, x_env, f_noise, f_robust, w_add, u]
+        symbols_input = [sym.symbols(_x) for _x in PlantV1.input_descriptions]
+        symbols_output = [sym.symbols(_x) for _x in PlantV1.output_descriptions]
+        # symbols_output = [f_measure, x_env_diff, x_robot, z_add, y1, y2]
+
+        # dynamic equation
+        Eq = sym.Eq
         eqs = []
         eqs.extend([
             # robot dynamics
-            xr - R1 * c * sym.exp(- 2 * Ts),
-            vr - s * xr,
-            v - s * x,
-            fm - (kr * (x - xr) + br * (v - vr)) * sym.exp(- 2 * Ts),
-            - (kr * (x - xr) + br * (v - vr)) + f - mr * v * s,
+            Eq(x_robot, R1 * x_cmd * sym.exp(- 2 * Ts)),
+            Eq(x_cmd, u),
+            Eq(v_robot, s * x_robot),
 
-            xro - x + xe,  # xro = x - xe
-            # loop
-            ke * (x - xe) + f + fro,
+            # tip link dynamics
+            Eq(v_link, s * x_link),
+            Eq(v_tip, s * x_tip),
+            Eq(m_tip * x_tip * s ** 2, f_act + k_tip * (x_link - x_tip) + b_tip * (v_link - v_tip)),
+            Eq(m_link * x_link * s ** 2, k_tip * (x_tip - x_link) + b_tip * (v_tip - v_link)
+               + k_link * (x_robot - x_link) + b_link * (v_robot - v_link)),
 
-            # input/output categorization
-            fd - y1,
-            y2 - (fm + n),
-            c - u1,
-            fd - w1,
-            xe - w2,
-            n - w3,
-            fm - z1,
+            # force measurement
+            Eq(f_measure, k_tip * (x_tip - x_link) + b_tip * (v_tip - v_link)),
+            Eq(y2, f_measure + f_noise),
+
+            # others
+            Eq(f_desired, y1),
+
+            # env dynamics
+            Eq(x_env_diff, w_add + x_link - x_env),
+            Eq(z_add, omega_add * (x_link - x_env)),
+            Eq(f_env, K_env * x_env_diff),
+            Eq(f_act, - f_env - f_robust),
         ]
         )
 
-        symdyn = [vr, xr, v, x, fm, f, c, fd, xe, n, xro]
-        symannot_out = [z1, xr, xro, y1, y2]
-        symannot_in = [w1, w2, w3, fro, u1]
+        symbols_to_solve = []
+        for symbol_out in symbols_dynamic_all:
+            if symbol_out not in symbols_input:
+                symbols_to_solve.append(symbol_out)
 
-        sym2solve = symdyn + symannot_out
-        res_ = sym.solve(eqs, sym2solve)
+        assert len(symbols_to_solve) == len(eqs), "Error: The number of equalities and the number of symbols to solve are different."
+
+        print("Start solving for dynamic equations")
+        solve_result = sym.solve(eqs, symbols_to_solve)
         # form overall tranfer matrix
-        P = []
-        for sym_out in symannot_out:
-            t_ = sym.expand(res_[sym_out])
-            terms = sym.collect(t_, symannot_in, evaluate=False)
-            P.append([])
-            for sym_in in symannot_in:
-                if sym_in in terms:
-                    P[-1].append(terms[sym_in].simplify())
+        plant = []
+        for symbol_out in symbols_output:
+            transfer_function = sym.expand(solve_result[symbol_out])
+            terms_dictionary = sym.collect(transfer_function, symbols_input, evaluate=False)
+            # This error occurs if the relevant transfer function is not a sum of
+            # terms that are linear in all input symbols.
+            assert 1 not in terms_dictionary, "A constant appears. Error occurs."
+            # extract individual component transfer function
+            plant.append([])
+            for symbol_in in symbols_input:
+                if symbol_in in terms_dictionary:
+                    plant[-1].append(terms_dictionary[symbol_in].simplify())
                 else:
-                    P[-1].append(0)
-                assert 1 not in terms, "there should not be any constant"
-        P = sym.Matrix(P)
+                    plant[-1].append(0)
+        plant = sym.Matrix(plant)
 
         # print symbolic transfer matrix as string.
-        string_expr = print_symmatrix_as_list(P)
+        plant_string_expr = print_symmatrix_as_list(plant)
         with open(PlantV1.gen_exp_file, 'w') as f:
-            f.write(string_expr)
-        print(string_expr)
+            f.write(plant_string_expr)
+        print("Obtain the following string expression for this plant\n----------------------------------------\n\n")
+        print(plant_string_expr)
 
 
 def contain_exp(expr):
@@ -202,7 +224,8 @@ class Controllers:
 
 if __name__ == "__main__":
     PlantV1.derive()
-    PlantV1.plant()
+    plant = PlantV1.plant(K_env=1, b_link=200, k_link=100e3, m_link=13, k_tip=100e4, b_tip=5000)
+    Ss.plot_step_responses(plant, 1, PlantV1.input_descriptions, PlantV1.output_descriptions)
     import IPython
     if IPython.get_ipython() is None:
         IPython.embed()

@@ -437,20 +437,24 @@ def get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1):
     return Pzw, Pzu, Pyw, Pyu
 
 
-def step_responses(P, Tmax):
-    """ Simulate all inputs of plant P and plot.
+def plot_step_responses(P: co.TransferFunction, Tmax: float, input_descriptions=range(10), output_descriptions=range(10)):
+    """ Simulate and plot all elements of the transfer matrix.
 
     Args:
         P: MIMO plant
-        Tmax: Max duration.
+        Tmax: Simulation duration.
     """
     Ts = P.dt
     tsim = np.arange(int(Tmax / Ts)) * Ts
     fig, axs = plt.subplots(P.outputs, P.inputs, sharex=True)
+    # plot
     for i in range(P.outputs):
+        axs[i, 0].set_ylabel(output_descriptions[i])
         for j in range(P.inputs):
             t, y = co.step_response(P[i, j], tsim)
             axs[i, j].plot(tsim, y[0, :])
+    for j in range(P.inputs):
+        axs[P.outputs - 1, j].set_xlabel(input_descriptions[j])
     plt.show()
 
 
