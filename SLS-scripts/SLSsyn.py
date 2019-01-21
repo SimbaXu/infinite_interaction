@@ -871,7 +871,7 @@ class Qsyn:
 
 
 def analysis(plant, controller, analysis_dict, controller_name='noname',
-             in_idxname=range(100), out_idxname=range(100)):
+             in_idxname=range(100), out_idxname=range(100), Nsteps=250):
     """A basic analysis of a plant/controller pair.
 
     The plant and controller are first combined using a Linear
@@ -903,7 +903,6 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
     else:
         print(" -- Closed-loop system STABLE. w_max={:}".format(wmax))
 
-    Nsteps = 800
     freqs = analysis_dict['freqs']
     T_sim = np.arange(Nsteps) * Ts
     nrow, ncol = analysis_dict['row_col']

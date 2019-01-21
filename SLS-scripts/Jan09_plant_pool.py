@@ -35,10 +35,10 @@ class PlantV1:
     }
 
     input_descriptions = ['f_desired', 'x_env', 'f_noise', 'f_robust', 'w_add', 'u']
-    # output_descriptions = ['f_measure', 'x_env_diff', 'x_robot', 'z_add', 'y1', 'y2']
-    output_descriptions = ['f_measure', 'x_tip', 'x_link', 'x_robot']
+    output_descriptions = ['f_measure', 'x_env_diff', 'x_robot', 'f_env_aug', 'z_add', 'y1', 'y2']
+    # output_descriptions = ['f_measure', 'x_tip', 'x_link', 'x_robot']
     @staticmethod
-    def plant(tau_R1=0.0437, K_env=10e3, omega_add=1,
+    def plant(tau_R1=0.0437, K_env=10e3, omega_add=1, K_env_aug=1,
               b_link=200, k_link=100e3, m_link=13,
               k_tip=100e4, b_tip=5000, m_tip=0.1, Ts=0.008):
         """Apply dynamic parameters.
@@ -66,12 +66,12 @@ class PlantV1:
         See Muji, p.10, Model force-control
         """
         # dynamic symbols
-        symbols_dynamic_string = 'v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust'
-        v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust = sym.symbols(symbols_dynamic_string)
+        symbols_dynamic_string = 'v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust, f_env_aug'
+        v_tip, x_tip, v_link, x_link, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust, f_env_aug = sym.symbols(symbols_dynamic_string)
         symbols_dynamic_all = sym.symbols(symbols_dynamic_string)
 
         # physical symbols
-        K_env, omega_add, m_link, k_link, b_link, R1 = sym.symbols("K_env, omega_add, m_link, k_link, b_link, R1")
+        K_env, K_env_aug, omega_add, m_link, k_link, b_link, R1 = sym.symbols("K_env, K_env_aug, omega_add, m_link, k_link, b_link, R1")
         m_tip, k_tip, b_tip = sym.symbols("m_tip, k_tip, b_tip ")
 
         # misc symbols
@@ -99,17 +99,19 @@ class PlantV1:
                + k_link * (x_robot - x_link) + b_link * (v_robot - v_link)),
 
             # force measurement
-            Eq(f_measure, k_tip * (x_tip - x_link) + b_tip * (v_tip - v_link)),
+            Eq(f_measure, (k_tip * (x_tip - x_link) + b_tip * (v_tip - v_link)) * sym.exp(- Ts)),
             Eq(y2, f_measure + f_noise),
 
             # others
             Eq(f_desired, y1),
 
             # env dynamics
-            Eq(x_env_diff, w_add + x_link - x_env),
-            Eq(z_add, omega_add * (x_link - x_env)),
+            Eq(x_env_diff, w_add + x_tip - x_env),
             Eq(f_env, K_env * x_env_diff),
-            Eq(f_act, - f_env - f_robust),
+            Eq(f_act, - f_env + f_robust),
+
+            Eq(z_add, omega_add * (x_tip - x_env)),
+            Eq(f_env_aug, x_env_diff * K_env_aug)
         ]
         )
 
@@ -120,7 +122,7 @@ class PlantV1:
 
         assert len(symbols_to_solve) == len(eqs), "Error: The number of equalities and the number of symbols to solve are different."
 
-        print("Start solving for dynamic equations")
+        print("Start solving dynamic equations")
         solve_result = sym.solve(eqs, symbols_to_solve)
         # form overall tranfer matrix
         plant = []
@@ -138,6 +140,8 @@ class PlantV1:
                 else:
                     plant[-1].append(0)
         plant = sym.Matrix(plant)
+        plant
+        import ipdb; ipdb.set_trace()
 
         # print symbolic transfer matrix as string.
         plant_string_expr = print_symmatrix_as_list(plant)
@@ -224,7 +228,7 @@ class Controllers:
 
 if __name__ == "__main__":
     PlantV1.derive()
-    plant = PlantV1.plant(K_env=1, b_link=200, k_link=100e3, m_link=13, k_tip=100e4, b_tip=5000)
+    plant = PlantV1.plant(K_env=500e3, b_link=50, k_link=100e3, k_tip=500, b_tip=5, K_env_aug=1)
     Ss.plot_step_responses(plant, 1, PlantV1.input_descriptions, PlantV1.output_descriptions)
     import IPython
     if IPython.get_ipython() is None:
