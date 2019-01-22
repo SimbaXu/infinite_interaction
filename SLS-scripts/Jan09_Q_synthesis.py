@@ -2,7 +2,7 @@ import SLSsyn as Ss
 import control as co
 import numpy as np
 import matplotlib.pyplot as plt
-import Jan09_model_derivation as mo
+import Jan09_plant_pool as mo
 
 
 def gen_description(Plant, *key):
@@ -12,13 +12,16 @@ def gen_description(Plant, *key):
     return out
 
 
-if __name__ == '__main__':
+def synthesize_controller_general_configuration():
+    """ Synthesize a controller in the general controller configuration.
+
+    See drawings/PlanV1.svg for an illustration of this configuration.
+    """
     Ts = 0.008
     s = co.tf([1, 0], [1])
 
-    Pz_design = mo.PlantV1.plant()
-
-    desired_resp = co.c2d(1 / (1 + 0.2 * s), Ts)
+    plant_nominal = mo.PlantV1.plant(K_env=3.8e3, omega_add=-30, k_link=60e3)
+    desired_resp = co.c2d(1 / (1 + 0.5 * s), Ts)
 
     design_dict = {
         'ny': 2,
@@ -39,8 +42,8 @@ if __name__ == '__main__':
         ],
 
         'constraint-freq': [
-            [(0, 2), lambda omegas: np.ones_like(omegas)],
-            [(1, 1), lambda omegas: np.ones_like(omegas)],
+            # [(0, 2), lambda omegas: np.ones_like(omegas)],
+            # [(1, 1), lambda omegas: np.ones_like(omegas)],
         ],
 
         'additional-time-vars': [
@@ -48,43 +51,38 @@ if __name__ == '__main__':
             ['step', (1, 1)]
         ],
         'additional-freq-vars': [
-            (0, 1), (2, 3)
+            (4, 4)
         ]
     }
 
     if input("Design controller?") == 'y':
-        data = Ss.Qsyn.Q_synthesis(Pz_design, design_dict)
+        data = Ss.Qsyn.Q_synthesis(plant_nominal, design_dict)
 
     if input("View immediate synthesis result?") == 'y':
-        # debug: preview result
-        imp00 = data['time-vars'][((0, 0), 'impulse')].value
+        omega_interested = [1, 5, 10, 20, 40]
+        analysis_dict = {
+            'row_col': (2, 2),
+            'freqs': np.logspace(-3, 2.2, 500),
+            'recipe': [
+                (0, 0, "step", (0, 0)),
+                (0, 1, "step", (1, 0)),
+                (1, 0, "nyquist", (4, 4), omega_interested),
+                (1, 1, "bode_mag", (4, 4), omega_interested),
+            ]
+        }
 
-        # scale by xe magnitude to a step of 1mm
-        imp01 = data['time-vars'][((0, 1), 'impulse')].value * 0.001
-        step_des00 = data['time-vars'][((0, 0), 'step', 'desired')]
-
-        plt.plot(data['Tsim'], np.cumsum(imp00), label=gen_description(mo.PlantV1, (0, 0), 'step'))
-        plt.plot(data['Tsim'], np.cumsum(imp01), label=gen_description(mo.PlantV1, (0, 1), 'step'))
-        plt.plot(data['Tsim'], step_des00, label=gen_description(mo.PlantV1, (0, 0), 'step', 'desired'))
-        plt.plot(data['Tsim'], data['time-vars'][((1, 0), 'step')].value, label=gen_description(mo.PlantV1, (1, 0), 'step'))
-        plt.plot(data['Tsim'], data['time-vars'][((1, 1), 'step')].value, label=gen_description(mo.PlantV1, (1, 1), 'step'))
-        plt.legend()
-        plt.show()
-
-        io2plot = [(1, 1)]
-        for io in io2plot:
-            mag = np.abs(data['freq-vars'][io].value)
-            plt.plot(design_dict['freqs'], mag, label=gen_description(mo.PlantV1, io))
-        plt.legend()
-        plt.show()
+        Ss.Qsyn.Q_synthesis_analysis(data, analysis_dict)
 
     if input("Save controller for later analysis?") == "y":
         K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(
             data['Qtaps'], data['Pyu'])
-        np.savez("Jan09_K_ss_params.npz", A=K_Qparam_ss.A, B=K_Qparam_ss.B,
+        np.savez("Jan09_controller_statespace_general_configuration.npz", A=K_Qparam_ss.A, B=K_Qparam_ss.B,
                  C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
-        
 
     import IPython
     if IPython.get_ipython() is None:
         IPython.embed()
+
+
+if __name__ == '__main__':
+    synthesize_controller_general_configuration()

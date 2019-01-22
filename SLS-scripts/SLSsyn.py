@@ -869,9 +869,64 @@ class Qsyn:
                'Tsim': T_sim}
         return res
 
+    @staticmethod
+    def Q_synthesis_analysis(data: dict, analysis_dict: dict, controller_name='noname',
+                             input_descriptions=range(100), output_descriptions=range(100)):
+        """ Plot results from Q_synthesis
 
-def analysis(plant, controller, analysis_dict, controller_name='noname',
-             in_idxname=range(100), out_idxname=range(100), Nsteps=250):
+        Args:
+            data: Synthesis data.
+            analysis_dict: The dictionary contains plot recipe.
+            controller_name: Name shown on the plot.
+            input_descriptions: Dictionary or List containing names of input signals.
+            output_descriptions: Dictionary or List containing names of output signals.
+        """
+        freqs = analysis_dict['freqs']
+        T_sim = data['Tsim']
+        nrow, ncol = analysis_dict['row_col']
+        fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
+
+        for entry in analysis_dict['recipe']:
+            i, j = entry[0], entry[1]
+            plot_type = entry[2]
+            # plot the step response of H[i, j]
+            if plot_type == 'step':
+                # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
+                for k in range(3, len(entry)):
+                    io_idx = entry[k]
+                    data_output = data['time-vars'][(io_idx, 'step')].value
+                    axs[i, j].plot(T_sim, data_output,
+                                   label='step resp. {:}, {:}'.format(
+                                       output_descriptions[io_idx[0]],
+                                       input_descriptions[io_idx[1]]))
+                    axs[i, j].set_title('Step response')
+
+            elif plot_type == 'nyquist':
+                # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3)
+                # The last elements are [these are interested frequencies]
+                output_idx, input_idx = entry[3]
+                H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                axs[i, j].plot(H_ij.real, H_ij.imag, '-x',
+                               label='H {:},{:}'.format(
+                                   output_descriptions[output_idx], input_descriptions[input_idx]
+                               ))
+                axs[i, j].scatter([-1], [0], marker='x', c='red')
+
+                if len(entry) > 4:
+                    toplot_idx = []
+                    for omega in entry[4]:
+                        idx = np.argmin(np.abs(freqs - omega))
+                        axs[i, j].text(H_ij[idx].real, H_ij[idx].imag,
+                                       "{:.3f} rad/s".format(freqs[idx]))
+                        toplot_idx.append(idx)
+                    axs[i, j].scatter(H_ij[toplot_idx].real, H_ij[toplot_idx].imag)
+
+                axs[i, j].set_aspect('equal')
+        plt.show()
+
+
+def analysis(plant: co.TransferFunction, controller: co.TransferFunction, analysis_dict: dict, controller_name='noname',
+             input_descriptions=range(100), output_descriptions=range(100), nb_sim_steps=250):
     """A basic analysis of a plant/controller pair.
 
     The plant and controller are first combined using a Linear
@@ -882,11 +937,12 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
     Signals are enumerated from 0.
 
     Args:
-        plant: A (3 outputs, 2 inputs) discrete-time LTI system.
-        controller: A (1 output, 1 input) discrete-time LTI system.
-        analysis_dict: A dictionary that contains descriptions of the
-            different analyses to conduct.
-
+        plant: Plant to analyze.
+        controller: Controller to analyze.
+        analysis_dict: A dictionary that contains descriptions of the different analyses.
+        input_descriptions: Dictionary or List containing names of input signals.
+        output_descriptions: Dictionary or List containing names of output signals.
+        nb_sim_steps: Number of time steps for simulation. Sampling time is the same as plant's.
     """
     H = lft(plant, controller)
     nu = controller.outputs
@@ -904,22 +960,23 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
         print(" -- Closed-loop system STABLE. w_max={:}".format(wmax))
 
     freqs = analysis_dict['freqs']
-    T_sim = np.arange(Nsteps) * Ts
+    T_sim = np.arange(nb_sim_steps) * Ts
     nrow, ncol = analysis_dict['row_col']
     fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
 
     for entry in analysis_dict['recipe']:
         i, j = entry[0], entry[1]
-
         plot_type = entry[2]
 
+        # Plot the time-response of Q
         if plot_type == 'q':
             Q = co.feedback(controller, Pyu, sign=1)
-            _, Q_imp = co.impulse_response(Q, np.arange(Nsteps) * Ts)
+            _, Q_imp = co.impulse_response(Q, np.arange(nb_sim_steps) * Ts)
             Q_imp = Q_imp.flatten()
             axs[i, j].plot(T_sim, Q_imp)
             axs[i, j].set_title(r"$Q (\delta[n]) $")
 
+        # plot the step response of H[i, j]
         elif plot_type == 'step':
             # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
             for k in range(3, len(entry)):
@@ -927,10 +984,11 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
                 _, y_step = co.step_response(H[output_idx, input_idx], T_sim)
                 axs[i, j].plot(T_sim, y_step[0, :],
                                label='step resp. {:}, {:}'.format(
-                                   out_idxname[output_idx],
-                                   in_idxname[input_idx]))
+                                   output_descriptions[output_idx],
+                                   input_descriptions[input_idx]))
                 axs[i, j].set_title('Step response')
 
+        # plot the impulse response
         elif plot_type == 'impulse':
             # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
             for k in range(3, len(entry)):
@@ -939,7 +997,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
                     H[output_idx, input_idx], T_sim)
                 axs[i, j].plot(T_sim, y_step[0, :],
                                label='imp. resp. {:}, {:}'.format(
-                                   out_idxname[output_idx], in_idxname[input_idx]
+                                   output_descriptions[output_idx], input_descriptions[input_idx]
                                ))
                 axs[i, j].set_title('Impulse response')
 
@@ -952,29 +1010,30 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
                 y_step_int = np.cumsum(y_step[0, :]) * Ts
                 axs[i, j].plot(T_sim, y_step_int,
                                label='step resp. int. {:}, {:}'.format(
-                                   out_idxname[output_idx], in_idxname[input_idx]
+                                   output_descriptions[output_idx], input_descriptions[input_idx]
                                ))
                 axs[i, j].set_title('Step response integral')
 
         elif plot_type == 'nyquist':
-            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3) [these
-            # are interested frequencies]
+            # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3)
+            # The last elements are [these are interested frequencies]
             output_idx, input_idx = entry[3]
             mag, phase, freqs = H[output_idx, input_idx].freqresp(freqs)
-            H = mag[0, 0] * np.exp(1j * phase[0, 0])
-            axs[i, j].plot(H.real, H.imag, '-',
-                           label='H{:}{:}'.format(
-                               out_idxname[output_idx], in_idxname[input_idx]
-                           ))
+            H_ij = mag[0, 0] * np.exp(1j * phase[0, 0])
+            axs[i, j].plot(H_ij.real, H_ij.imag, '-x',
+                              label='H {:},{:}'.format(
+                                  output_descriptions[output_idx], input_descriptions[input_idx]
+                              ))
+            axs[i, j].scatter([-1], [0], marker='x', c='red')
 
             if len(entry) > 4:
                 toplot_idx = []
                 for omega in entry[4]:
                     idx = np.argmin(np.abs(freqs - omega))
-                    axs[i, j].text(H[idx].real, H[idx].imag,
+                    axs[i, j].text(H_ij[idx].real, H_ij[idx].imag,
                                    "{:.3f} rad/s".format(freqs[idx]))
                     toplot_idx.append(idx)
-                axs[i, j].scatter(H[toplot_idx].real, H[toplot_idx].imag)
+                axs[i, j].scatter(H_ij[toplot_idx].real, H_ij[toplot_idx].imag)
 
             axs[i, j].set_aspect('equal')
 
@@ -986,7 +1045,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
                     mag, phase, freqs = H[output_idx,
                                           input_idx].freqresp(freqs)
                     label = '{:}, {:}'.format(
-                        out_idxname[output_idx], in_idxname[input_idx])
+                        output_descriptions[output_idx], input_descriptions[input_idx])
                 axs[i, j].plot(freqs, mag[0, 0], label=label)
 
             axs[i, j].set_xscale('log')
@@ -1003,7 +1062,7 @@ def analysis(plant, controller, analysis_dict, controller_name='noname',
                     mag, phase, freqs = H[output_idx,
                                           input_idx].freqresp(freqs)
                     label = 'H{:}{:}'.format(
-                        out_idxname[output_idx], in_idxname[input_idx])
+                        output_descriptions[output_idx], input_descriptions[input_idx])
                 axs[i, j].plot(freqs, np.rad2deg(phase[0, 0]), label=label)
 
             for mult in range(-2, 2):

@@ -22,9 +22,10 @@ class PlantV1:
     The robot has flexible link. At the tip of the link there is a FT sensor. The tool attached to
     the FT sensor is also flexible.
 
-    Signal descriptions:
-        inputs = [f_desired, x_env, f_noise, f_robust, w_add, u]
-        outputs = [f_measure, x_env_diff, x_robot, z_add, y1, y2]
+    `data/drawings/PlantV1.svg` is a visualization of this plant model.
+
+    Notes on parameters:
+    - f_env_aug and f_robust: output and input respectively of an agumented
     """
     gen_exp_file = "PlantV1_gen_exp"
     z_idx_map = {
@@ -141,7 +142,6 @@ class PlantV1:
                     plant[-1].append(0)
         plant = sym.Matrix(plant)
         plant
-        import ipdb; ipdb.set_trace()
 
         # print symbolic transfer matrix as string.
         plant_string_expr = print_symmatrix_as_list(plant)
