@@ -621,7 +621,7 @@ class Qsyn:
             np.max(resp_mat), np.min(resp_mat)))
 
         if return_coefficient_matrix:
-            return resp_mat
+            return resp, resp_mat
         if type(weight) is cvx.Variable:
             resp = resp + resp_mat * weight
         elif type(weight) is np.ndarray:
@@ -819,59 +819,60 @@ class Qsyn:
             # Below I implement a simple scaling strategy, in which I scale each row of A
             # so that the corresponding element of b is 1.
             for io_idx, func, approx_linear in specs['constraint-freq']:
-                freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
+                freqresp_term, freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
                 # obtain magnitude upper-bound
                 if type(func) == co.TransferFunction:
                     mag_upbnd = func.freqresp(freqs)[0][0, 0]
-                    scale_matrix = np.diag(mag_upbnd**(-1))
-                    constraints.append(
-                        cvx.abs(np.dot(scale_matrix, freqresp_coefficient_matrix) * weight) <= 1)
+                    constraints.append(cvx.abs(
+                        freqresp_term + freqresp_coefficient_matrix * weight) <= mag_upbnd)
                 else:
                     try:
                         centers, mag_upbnd = func(freqs)
                         scale_matrix = np.diag(mag_upbnd**(-1))
+                        # TODO: fix the below
                         constraints.append(
                             cvx.abs(np.dot(scale_matrix, freqresp_coefficient_matrix) * weight - np.dot(scale_matrix, centers)) <= 1)
                     except ValueError:
                         mag_upbnd = func(freqs)
                         if approx_linear:  # box constraint
+                            # TODO: fix the below
                             constraints.append(freqresp_coefficient_matrix.real * weight <= mag_upbnd)
                             constraints.append(freqresp_coefficient_matrix.real * weight >= -mag_upbnd)
 
                             constraints.append(freqresp_coefficient_matrix.imag * weight <= mag_upbnd)
                             constraints.append(freqresp_coefficient_matrix.imag * weight >= -mag_upbnd)
                         else:
-                            constraints.append(cvx.abs(freqresp_coefficient_matrix * weight) <= mag_upbnd)
+                            constraints.append(cvx.abs(
+                                freqresp_term + freqresp_coefficient_matrix * weight) <= mag_upbnd)
 
         # constraint on the nyquist plot
         if 'constraint-nyquist-stability' in specs:
             # format: (io_idx), gain_margin, phase_margin, omega_threshold
-            for io_idx, gain_margin, phase_margin, (omega_low, omega_high) in specs['constraint-nyquist-stability']:
+            for io_idx, pivot_margin, phase_margin, (omega_low, omega_high) in specs['constraint-nyquist-stability']:
                 freqs_threshold = freqs[np.where((freqs > omega_low) * (freqs < omega_high))]
-                coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
-                coefficient_matrix_real = coefficient_matrix.real
-                coefficient_matrix_imag = coefficient_matrix.imag
+                freqresp_term, freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
 
                 # MATH: This short write-up establishes notations and symbols. Let p be a point
                 # in the complex plane, let pi be the pivot point (- gain_margin, 0). Let n be the normal
                 # vector to the phase condition. By geometric consideration:
-                # pi = (-gain_margin, 0)
+                # pi = (pi_x, pi_y)
                 # n = [sin(phase_margin),  - cos(phase_margin)]
                 # The condition for a point p to satisfy the phase plane is:
                 # n^T (p - pi) >= 0,
                 # n^T p >= n^T pi,
-                # nx * px + ny * py >= n^T pi = nx * (-gain_margin),
+                # nx * px + ny * py >= n^T pi
                 # Now, notice that the rhs is constant, so I compute it once and forget about it.
                 # The lhs can be written as follows
-                # nx * coefficient_matrix_real * weight + ny * coefficient_matrix_imag * weight,
-                # [nx * coefficient_matrix_real + ny * coefficient_matrix_imag] * weight >= nx * (-gain_margin)
+                # nx * (term_real + coefficient_matrix_real * weight) + (term_imag + ny * coefficient_matrix_imag * weight),
+                # nx * term_real + ny * term_imag + [nx * coefficient_matrix_real + ny * coefficient_matrix_imag] * weight >= nx * pi_x + ny * pi_y
 
                 normal_x = np.sin(phase_margin)  # use instead of nx in the above note
                 normal_y = - np.cos(phase_margin)
 
                 constraints.append(
-                    (normal_x * coefficient_matrix_real + normal_y * coefficient_matrix_imag) * weight >= normal_x * (-gain_margin)
-                )
+                    normal_x * freqresp_term.real + normal_y * freqresp_term.imag +
+                    (normal_x * freqresp_coefficient_matrix.real + normal_y * freqresp_coefficient_matrix.imag) * weight
+                    >= normal_x * pivot_margin[0] + normal_y * pivot_margin[1])
 
         # passivity
         if 'passivity' in specs:

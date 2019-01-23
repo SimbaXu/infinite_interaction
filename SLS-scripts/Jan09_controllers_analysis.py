@@ -19,16 +19,17 @@ if __name__ == '__main__':
     # - The stiffest environment are the blocks. Their stiffnesses can be up to 200 N/mm. Because
     #   of this omega_add is assign -30 to check for stability.
     plants = OrderedDict([
-        ('nominal', mo.PlantV2.plant(K_env=3.8e3, omega_add=-30, k_link=60e3, K_env_aug=100e3, m_tip=0.01, k_tip=200e3)),
-        ('stiff', mo.PlantV2.plant(K_env=20e3, k_link=60e3)),
-        ('stiffer', mo.PlantV2.plant(K_env=40e3, k_link=60e3)),
-        ('stiffest', mo.PlantV2.plant(K_env=60e3, k_link=60e3))
+        ('nominal', mo.PlantV2.plant(K_env=3.8, omega_add=-30, K_env_aug=40)),
+        ('stiff', mo.PlantV2.plant(K_env=20, K_env_aug=10)),
+        ('stiffer', mo.PlantV2.plant(K_env=40, K_env_aug=10)),
+        ('stiffest', mo.PlantV2.plant(K_env=60, K_env_aug=10)),
+        ('stiffest2', mo.PlantV2.plant(K_env=80, K_env_aug=10))
     ])
 
     # controller descriptions:
-    c0 = mo.Controllers.PI_v1(0, 12e-4)
+    # c0 = mo.Controllers.PI_v1(0, 12e-1)
     # c0 = mo.Controllers.PI_v1(0, 12e-5)
-    # c0 = mo.Controllers.Qsyn(filename="Jan09_controller_statespace_general_configuration.npz")
+    c0 = mo.Controllers.Qsyn(filename="Jan09_controller_statespace_general_configuration.npz")
 
     # analysis mode, nothing special, just step output and Nyquist to check the condition of robust stability.
     omega_interested = [1, 5, 10, 20, 40, 80, 100, 200]
@@ -38,14 +39,14 @@ if __name__ == '__main__':
         'recipe': [
             (0, 0, "step", (0, 0)),
             (0, 1, "step", (0, 1)),
-            (1, 0, "nyquist", (4, 4), omega_interested),
+            (1, 0, "nyquist", (3, 3), omega_interested),
             (1, 1, "bode_mag", (1, 0), omega_interested),
-            (2, 1, "bode_mag", (4, 4), omega_interested),
-            # (0, 1, "bode_mag", (3, 3), omega_interested),
+            (2, 1, "bode_mag", (0, 0), omega_interested),
+            (2, 0, "bode_mag", (2, 0), omega_interested),
         ]
     }
     for plant_key in plants:
         Ss.analysis(plants[plant_key], c0, analysis_dict,
-                    input_descriptions=mo.PlantV1.input_descriptions,
-                    output_descriptions=mo.PlantV1.output_descriptions,
-                    controller_name=plant_key)
+                    input_descriptions=mo.PlantV2.input_descriptions,
+                    output_descriptions=mo.PlantV2.output_descriptions,
+                    controller_name=plant_key, nb_sim_steps=500)

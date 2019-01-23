@@ -33,9 +33,10 @@ class PlantV2:
     }
 
     input_descriptions = ['f_desired', 'x_env', 'f_noise', 'f_robust', 'w_add', 'u']
-    output_descriptions = ['y2', 'x_cmd', 'x_robot', 'f_env_aug', 'z_add', 'y1', 'y2']
+    output_descriptions = ['f_measure', 'x_cmd', 'f_error', 'f_env_aug', 'z_add', 'y1', 'y2']
     @staticmethod
-    def plant(tau_R1=0.0437, K_env=10e3, omega_add=1, K_env_aug=50e3, f_scale=1,
+    def plant(tau_R1=0.0437, K_env=10e3, omega_add=1, K_env_aug=50e3,
+              f_scale=1, f_desired_scale=1, x_cmd_scale=1, x_env_scale=1,
               b_link=1500, k_link=60e3, m_link=10,
               k_tip=100e4, b_tip=2000, m_tip=0.1, Ts=0.008):
         """Apply dynamic parameters.
@@ -65,14 +66,15 @@ class PlantV2:
         See Muji, p.10, Model force-control
         """
         # dynamic symbols
-        symbols_dynamic_string = 'v_tip, x_tip, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, f_error, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust, f_env_aug'
-        v_tip, x_tip, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, f_error, w_add, z_add, x_env, f_env, x_env_diff, u, y1, y2, f_robust, f_env_aug = sym.symbols(symbols_dynamic_string)
+        symbols_dynamic_string = 'v_tip, x_tip, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, f_error, w_add, z_add, x_env, f_env, x_env_diff, u, u_out, y1, y2, f_robust, f_env_aug'
+        v_tip, x_tip, v_robot, x_robot, x_cmd, f_measure, f_noise, f_act, f_desired, f_error, w_add, z_add, x_env, f_env, x_env_diff, u, u_out, y1, y2, f_robust, f_env_aug = sym.symbols(symbols_dynamic_string)
         symbols_dynamic_all = sym.symbols(symbols_dynamic_string)
 
         # physical symbols
         K_env, K_env_aug, omega_add, m_link, k_link, b_link, R1 = sym.symbols("K_env, K_env_aug, omega_add, m_link, k_link, b_link, R1")
         m_tip, k_tip, b_tip = sym.symbols("m_tip, k_tip, b_tip ")
-        f_scale = sym.symbols('f_scale')
+        f_scale, x_env_scale = sym.symbols('f_scale x_env_scale')
+        x_cmd_scale, f_desired_scale = sym.symbols('x_cmd_scale, f_desired_scale')
 
         # misc symbols
         s, Ts = sym.symbols('s Ts')
@@ -88,7 +90,8 @@ class PlantV2:
         eqs.extend([
             # robot dynamics
             Eq(x_robot, R1 * x_cmd * sym.exp(- 2 * Ts)),
-            Eq(x_cmd, u),
+            Eq(x_cmd, x_cmd_scale * u),
+            Eq(u_out, u),
             Eq(v_robot, s * x_robot),
 
             # tip link dynamics
@@ -97,18 +100,24 @@ class PlantV2:
 
             # force measurement
             Eq(f_measure, (f_act) * sym.exp(- Ts)),
-            Eq(f_error, f_desired - (f_measure + f_noise)),
-            Eq(y2, f_scale * f_error),
+
+            # 1-dof configuration
+            # Eq(f_error, f_desired - (f_measure + f_noise)),
+            # Eq(y2, f_scale * f_error),
+
+            # general configuration
+            Eq(y2, (f_measure + f_noise) * f_scale),
+            Eq(f_error, f_desired - f_measure),
 
             # others
-            Eq(f_desired, y1),
+            Eq(y1, f_desired_scale * f_desired),
 
             # env dynamics
-            Eq(x_env_diff, w_add + x_tip - x_env),
+            Eq(x_env_diff, w_add + x_tip - x_env * x_env_scale),
             Eq(f_env, K_env * x_env_diff),
             Eq(f_act, - f_env + f_robust),
 
-            Eq(z_add, omega_add * (x_tip - x_env)),
+            Eq(z_add, omega_add * (x_tip - x_env * x_env_scale)),
             Eq(f_env_aug, x_env_diff * K_env_aug)
         ]
         )
@@ -139,7 +148,6 @@ class PlantV2:
                     plant[-1].append(0)
         plant = sym.Matrix(plant)
         plant
-        import ipdb; ipdb.set_trace()
 
         # print symbolic transfer matrix as string.
         plant_string_expr = print_symmatrix_as_list(plant)
@@ -383,7 +391,7 @@ if __name__ == "__main__":
     PlantClass = PlantV2
     PlantClass.derive()
     # plant = PlantClass.plant(m_tip=0.01, K_env=40e3, k_link=60e3, omega_add=-30, m_link=10, b_link=780, f_scale=1e-4)
-    plant = PlantClass.plant(K_env=5e3, K_env_aug=60e3, f_scale=1e-4)
+    plant = PlantClass.plant(K_env=5, K_env_aug=50)
     # Ss.plot_step_responses(plant, 1, PlantV1.input_descriptions, PlantV1.output_descriptions)
     Ss.plot_freq_response(plant, np.logspace(-3, 2.58, 500), PlantClass.input_descriptions, PlantClass.output_descriptions, xlog=True, ylog=True)
 
