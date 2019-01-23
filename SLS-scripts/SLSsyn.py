@@ -12,6 +12,7 @@ import cvxpy as cvx
 import scipy.sparse as sparse
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+import mosek
 
 
 class MatlabEngine(object):
@@ -438,7 +439,7 @@ def get_partitioned_transfer_matrices(Pz_design, nu=1, ny=1):
 
 
 def plot_step_responses(P: co.TransferFunction, Tmax: float, input_descriptions=range(10), output_descriptions=range(10)):
-    """ Simulate and plot all elements of the transfer matrix.
+    """ Simulate and plot all elements of a MIMO transfer matrix.
 
     Args:
         P: MIMO plant
@@ -453,6 +454,31 @@ def plot_step_responses(P: co.TransferFunction, Tmax: float, input_descriptions=
         for j in range(P.inputs):
             t, y = co.step_response(P[i, j], tsim)
             axs[i, j].plot(tsim, y[0, :])
+    for j in range(P.inputs):
+        axs[P.outputs - 1, j].set_xlabel(input_descriptions[j])
+    plt.show()
+
+
+def plot_freq_response(P: co.TransferFunction, freqs: np.ndarray, input_descriptions=range(10), output_descriptions=range(10), xlog=False, ylog=False):
+    """
+
+    Args:
+        P:
+        freqs:
+        input_descriptions:
+        output_descriptions:
+    """
+    fig, axs = plt.subplots(P.outputs, P.inputs, sharex=True)
+    for i in range(P.outputs):
+        axs[i, 0].set_ylabel(output_descriptions[i])
+        for j in range(P.inputs):
+            mag, _, _ = P[i, j].freqresp(freqs)
+            if (np.all(mag > 0)):
+                axs[i, j].plot(freqs, mag[0, 0])
+            if xlog:
+                axs[i, j].set_xscale('log')
+            if ylog:
+                axs[i, j].set_yscale('log')
     for j in range(P.inputs):
         axs[P.outputs - 1, j].set_xlabel(input_descriptions[j])
     plt.show()
@@ -534,6 +560,8 @@ class Qsyn:
                 resp_mat.append(resp_k)
 
         resp_mat = np.array(resp_mat).T
+        print("  > largest element: {:f}, smallest element: {:f}".format(
+            np.max(resp_mat), np.min(resp_mat)))
         if type(weight) == cvx.Variable:
             resp = resp + resp_mat * weight
         elif type(weight) == np.ndarray:
@@ -543,13 +571,13 @@ class Qsyn:
         return resp
 
     @staticmethod
-    def obtain_freq_var(weight: cvx.Variable, io_idx: tuple, freqs: np.ndarray, Pzw: co.TransferFunction, Pzu: co.TransferFunction, Pyw: co.TransferFunction) -> dict:
+    def obtain_freq_var(weight: cvx.Variable, io_idx: tuple, freqs: np.ndarray, Pzw: co.TransferFunction, Pzu: co.TransferFunction, Pyw: co.TransferFunction, return_coefficient_matrix=False):
         """Return a frequency-response variable.
 
         For convention on weight, see :func:`obtain_time_response_var`.
 
         Args:
-            weight: cvxpy Variable containing the taps.
+            weight: cvxpy Variable containing the taps. Can also be a numpy ndarray or None.
             io_idx: (output, input) indices.
             freqs: Frequencies at which to evaluate the transfer function.
             Pzw: Plant block transfer functions.
@@ -576,8 +604,8 @@ class Qsyn:
         resp_mat = []
         delay_steps = 0
         for k in range(weight.shape[0]):
-            iQ = int((k / Ntaps) / ny)  # current row on Q matrix
-            jQ = int((k / Ntaps) % ny)  # current col on Q matrix
+            iQ = int(int(k / Ntaps) / ny)  # current row on Q matrix
+            jQ = int(int(k / Ntaps) % ny)  # current col on Q matrix
             delay_steps = k - (ny * iQ + jQ) * Ntaps
 
             if delay_steps == 0:
@@ -589,12 +617,17 @@ class Qsyn:
                 resp_mat.append(delayed_resp)
         resp_mat = np.array(resp_mat).T
 
-        if type(weight) == cvx.Variable:
+        print("  > largest abs element: {:}, smallest abs element: {:}".format(
+            np.max(resp_mat), np.min(resp_mat)))
+
+        if return_coefficient_matrix:
+            return resp_mat
+        if type(weight) is cvx.Variable:
             resp = resp + resp_mat * weight
-        elif type(weight) == np.ndarray:
+        elif type(weight) is np.ndarray:
             resp = resp + np.dot(resp_mat, weight)
         else:
-            raise ValueError("Unknown weight type")
+            raise ("Unknown weight type")
         return resp
 
     @staticmethod
@@ -772,24 +805,73 @@ class Qsyn:
 
         # frequency-domain constraints
         if 'constraint-freq' in specs:
-            # func: a function that returns magnitude
-            for io_idx, func in specs['constraint-freq']:
-                if io_idx in freq_vars:
-                    freq_var = freq_vars[io_idx]
-                else:
-                    freq_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw)
-                    freq_vars[io_idx] = freq_var
-
+            # an entry in this list has the following format:
+            # (io_idx, func)
+            # io_idx: indices of the output, input signals
+            # func: can be three cases:
+            #    1. a transfer function
+            #    2. a function that returns magnitude given frequencies
+            #    3. a function that returns centers, magnitude given frequencies
+            # SCALING: Here we scale the problem data. Let the original constraint be
+            #      | A weight | <= b
+            # Sometimes I observe rows of A and elements of b have very different scales.
+            # e.g. 1 and 80 000. This means the problem is badly scale.
+            # Below I implement a simple scaling strategy, in which I scale each row of A
+            # so that the corresponding element of b is 1.
+            for io_idx, func, approx_linear in specs['constraint-freq']:
+                freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
                 # obtain magnitude upper-bound
                 if type(func) == co.TransferFunction:
                     mag_upbnd = func.freqresp(freqs)[0][0, 0]
+                    scale_matrix = np.diag(mag_upbnd**(-1))
+                    constraints.append(
+                        cvx.abs(np.dot(scale_matrix, freqresp_coefficient_matrix) * weight) <= 1)
                 else:
-                    mag_upbnd = func(freqs)
+                    try:
+                        centers, mag_upbnd = func(freqs)
+                        scale_matrix = np.diag(mag_upbnd**(-1))
+                        constraints.append(
+                            cvx.abs(np.dot(scale_matrix, freqresp_coefficient_matrix) * weight - np.dot(scale_matrix, centers)) <= 1)
+                    except ValueError:
+                        mag_upbnd = func(freqs)
+                        if approx_linear:  # box constraint
+                            constraints.append(freqresp_coefficient_matrix.real * weight <= mag_upbnd)
+                            constraints.append(freqresp_coefficient_matrix.real * weight >= -mag_upbnd)
+
+                            constraints.append(freqresp_coefficient_matrix.imag * weight <= mag_upbnd)
+                            constraints.append(freqresp_coefficient_matrix.imag * weight >= -mag_upbnd)
+                        else:
+                            constraints.append(cvx.abs(freqresp_coefficient_matrix * weight) <= mag_upbnd)
+
+        # constraint on the nyquist plot
+        if 'constraint-nyquist-stability' in specs:
+            # format: (io_idx), gain_margin, phase_margin, omega_threshold
+            for io_idx, gain_margin, phase_margin, (omega_low, omega_high) in specs['constraint-nyquist-stability']:
+                freqs_threshold = freqs[np.where((freqs > omega_low) * (freqs < omega_high))]
+                coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
+                coefficient_matrix_real = coefficient_matrix.real
+                coefficient_matrix_imag = coefficient_matrix.imag
+
+                # MATH: This short write-up establishes notations and symbols. Let p be a point
+                # in the complex plane, let pi be the pivot point (- gain_margin, 0). Let n be the normal
+                # vector to the phase condition. By geometric consideration:
+                # pi = (-gain_margin, 0)
+                # n = [sin(phase_margin),  - cos(phase_margin)]
+                # The condition for a point p to satisfy the phase plane is:
+                # n^T (p - pi) >= 0,
+                # n^T p >= n^T pi,
+                # nx * px + ny * py >= n^T pi = nx * (-gain_margin),
+                # Now, notice that the rhs is constant, so I compute it once and forget about it.
+                # The lhs can be written as follows
+                # nx * coefficient_matrix_real * weight + ny * coefficient_matrix_imag * weight,
+                # [nx * coefficient_matrix_real + ny * coefficient_matrix_imag] * weight >= nx * (-gain_margin)
+
+                normal_x = np.sin(phase_margin)  # use instead of nx in the above note
+                normal_y = - np.cos(phase_margin)
 
                 constraints.append(
-                    cvx.abs(freq_var) <= mag_upbnd
+                    (normal_x * coefficient_matrix_real + normal_y * coefficient_matrix_imag) * weight >= normal_x * (-gain_margin)
                 )
-                freq_vars[io_idx] = freq_var
 
         # passivity
         if 'passivity' in specs:
@@ -837,7 +919,10 @@ class Qsyn:
         prob = cvx.Problem(cvx.Minimize(cost), constraints)
 
         print(" -- Solve instance")
-        prob.solve(verbose=True)
+        prob.solve(verbose=True, mosek_params={'MSK_IPAR_INTPNT_SCALING': 3,
+                                               "MSK_IPAR_PRESOLVE_USE": 1,
+                                               "MSK_IPAR_LOG": 10000
+                                               })  # aggressive scaling
         assert(prob.status == 'optimal')
 
         print(" -- Cost report\n")
@@ -922,6 +1007,57 @@ class Qsyn:
                     axs[i, j].scatter(H_ij[toplot_idx].real, H_ij[toplot_idx].imag)
 
                 axs[i, j].set_aspect('equal')
+
+            elif plot_type == 'bode_mag':
+                # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
+                # or:     i, j, 'bode_mag', function, (w0, w1, w3)
+                try:
+                    output_idx, input_idx = entry[3]
+                    H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                    label = '{:}, {:}'.format(
+                        output_descriptions[output_idx], input_descriptions[input_idx])
+                    axs[i, j].plot(freqs, np.abs(H_ij), label=label)
+                except TypeError:
+                    mag_ij = entry[3](analysis_dict['freqs'])
+                    label = 'func: {:}, {:}'.format(
+                        output_descriptions[output_idx], input_descriptions[input_idx])
+                    axs[i, j].plot(freqs, mag_ij, label=label)
+
+                axs[i, j].set_xscale('log')
+                axs[i, j].set_yscale('log')
+                axs[i, j].set_xlabel('Freq(rad/s)')
+                axs[i, j].set_title("Frequency Response (non-db)")
+
+            elif plot_type == 'bode_phs':
+                # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
+                output_idx, input_idx = entry[3]
+                H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                label = '{:}, {:}'.format(
+                    output_descriptions[output_idx], input_descriptions[input_idx])
+                axs[i, j].plot(freqs, np.angle(H_ij), label=label)
+
+                axs[i, j].set_xscale('log')
+                axs[i, j].set_xlabel('Freq(rad/s)')
+                axs[i, j].set_title("Angle (rad)")
+
+            elif plot_type == 'q':
+                # format: i, j, 'q'
+                ny = data['Pyu'].outputs
+                nu = data['Pyu'].inputs
+                Ntaps = round(data['Qtaps'].shape[0] / nu / ny)
+                for iq in range(nu):
+                    for jq in range(ny):
+                        current_index = (iq * ny + jq) * Ntaps
+                        axs[i, j].plot(data['Qtaps'][current_index: current_index + Ntaps],
+                                       label='Q[{:d}, {:d}]'.format(iq, jq))
+
+        for i in range(nrow):
+            for j in range(ncol):
+                axs[i, j].grid()
+                axs[i, j].legend()
+
+        fig.suptitle('Analysis plots: {:}'.format(controller_name))
+        plt.tight_layout()
         plt.show()
 
 
