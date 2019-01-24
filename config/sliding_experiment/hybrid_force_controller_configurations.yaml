@@ -17,10 +17,11 @@ hybrid_force_controller:
 
   search_velocity_mm_sec: 1
   search_force_threshold: 2.0
-  initial_desired_force: 4
+  initial_desired_force: 8
   safety_force_threshold: 100
   positional_deadzone: 0.0 # control = control if abs(control) > deadzone, otherwise 0
   force_deadzone: 0.0  # N
+  joint_command_deadzone: 0.0 # joint movement needs to be greater than this value
 
   gam: 1.0e-5
   gam2: 0.0e-5
@@ -29,7 +30,8 @@ hybrid_force_controller:
   Q_syn:
     type: Q_synthesis
     controllers:
-      - /controllers/Q_syn0_0  # controller 0, version 0
+      # - /controllers/Q_syn0_0  # controller 0, version 0
+      - /controllers/Q_syn1_0  # controller 0, version 0
 
   integral:
     type: PI

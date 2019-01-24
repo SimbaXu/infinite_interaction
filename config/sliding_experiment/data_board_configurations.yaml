@@ -9,7 +9,8 @@ data_board:
     - [0, "/debugger/cartesian_force_measurement", 2]
     - [0, "/debugger/cartesian_command", 2]
 
-    - [1, "/debugger/cartesian_command", 2]
+    - [1, "/debugger/joint_command", 1]
+    - [1, "/debugger/joint_measure", 1]
   
   axes_configs:
     yranges:

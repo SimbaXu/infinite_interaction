@@ -282,6 +282,7 @@ class HybridForceController {
     double initial_desired_force_;
     double distance_stopband_;  // (in meter) control = control if abs(control) > deadzone, otherwise 0
     double force_deadzone_; // if f_measure in [f_desired - f_deadzone, f_desired + f_deadzone], f_error = 0
+    double joint_command_deadzone_;
 
     std::shared_ptr<SignalBlock> position2joint_map_ptr_;
 
@@ -337,6 +338,7 @@ public:
         try_load_param("initial_desired_force", initial_desired_force_, (double) 2);
         try_load_param("positional_deadzone", distance_stopband_, (double) 0);
         try_load_param("force_deadzone", force_deadzone_, (double) 0);
+        try_load_param("joint_command_deadzone", joint_command_deadzone_, (double) 0.0);
 
         // load force controller first, so that assertion error is thrown without affecting other
         Zaxis_force_controller_ptr_ = std::make_shared<SISOForceControllerManager>(force_controller_id_, nh_);
@@ -436,6 +438,7 @@ public:
         int cy_idx = 0;  // cycle index
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
         double current_Zaxis_command;  // use to store current command position
+        std::vector<double> new_joint_command(6);
         setpoints_[2] = initial_desired_force_; // initial force threshold set to the same as search_force_threshold_
 
         control_state_id_ = 1; // init control state to 1, touching down.
@@ -546,7 +549,12 @@ public:
 
             // compute command to send
             position2joint_map_ptr_->set_state(joint_measure_);
-            joint_cmd_ = position2joint_map_ptr_->compute(cartesian_cmd_);
+            new_joint_command = position2joint_map_ptr_->compute(cartesian_cmd_);
+            for(int i=0; i < 6; i++){
+                if (ABS(joint_cmd_[i] - new_joint_command[i]) > joint_command_deadzone_){
+                    joint_cmd_[i] = new_joint_command[i];
+                }
+            }
 
             // stage 1 finished; sleep
             RTUtils::increment_timespec(slp_dline_spec, FOUR_MS);
