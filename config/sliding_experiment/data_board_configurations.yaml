@@ -1,6 +1,6 @@
 data_board:
   layout: [1, 2]
-  number_store_points: 2500
+  number_store_points: 5000
   time_window_sec: 120
 
   handles:
