@@ -1,0 +1,16 @@
+controllers:
+  integral1_0:
+    filter00_a:
+    - 1.0
+    - -1.0
+    filter00_b:
+    - -0.0008000000000000229
+    - 0
+    filter01_a:
+    - 1.0
+    - -1.0
+    filter01_b:
+    - 0.0008000000000000229
+    - 0
+    scale_output: 0.001
+    type: integral
