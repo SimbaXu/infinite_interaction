@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+"""A very convenient program to view data from published topics.
+
+Users interact with this program by writing a ROS configuration file,
+loaded to ROS parameter server.
+
+"""
 import rospy
 
 import matplotlib.pyplot as plt
@@ -71,8 +77,10 @@ if __name__ == '__main__':
         for handle_idx, (axes_index, topic_name, indies) in enumerate(handles):
             coll = data_collector_dict[topic_name]
 
-            xdata = np.array(range(data_collector_dict[topic_name].total_index - number_store_points, data_collector_dict[topic_name].total_index)) * 0.008
-
+            xdata = np.array(
+                range(coll.total_index - number_store_points,
+                      coll.total_index)) * 0.008
+            
             ydata = (coll.data[coll.current_index:, indies].tolist()
                      + coll.data[0:coll.current_index, indies].tolist())
 

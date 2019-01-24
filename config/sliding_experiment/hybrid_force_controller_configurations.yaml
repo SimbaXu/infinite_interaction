@@ -17,7 +17,7 @@ hybrid_force_controller:
 
   search_velocity_mm_sec: 1
   search_force_threshold: 2.0  # need to be positive
-  safety_force_threshold: 10
+  safety_force_threshold: 20
 
   gam: 1.0e-5
   gam2: 0.0e-5
