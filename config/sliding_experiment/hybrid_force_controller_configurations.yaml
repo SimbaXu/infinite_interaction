@@ -2,8 +2,8 @@
 hybrid_force_controller:
 
   # This parameter selects the active controller
-  # active_controller: Q_syn
-  active_controller: integral_stiff
+  active_controller: Q_syn
+  # active_controller: integral_stiff
 
   debug: true
   viewer: false
@@ -28,13 +28,6 @@ hybrid_force_controller:
   # controllers definitiosn
   Q_syn:
     type: Q_synthesis
-
-    # DESCRIPTION:
-
-    # INTENDED BEHAVIOR: 
-
-    # IMPLEMENTATION NOTE:
-
     controllers:
       - /controllers/Q_syn0_0  # controller 0, version 0
 

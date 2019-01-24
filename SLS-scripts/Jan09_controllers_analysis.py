@@ -20,15 +20,15 @@ if __name__ == '__main__':
     #   of this omega_add is assign -30 to check for stability.
     plants = OrderedDict([
         ('nominal', mo.PlantV2.plant(K_env=3.8, omega_add=-30, K_env_aug=40)),
-        ('stiff', mo.PlantV2.plant(K_env=20, K_env_aug=10)),
+        # ('freespace', mo.PlantV2.plant(K_env=10e-3)),
+        # ('stiff', mo.PlantV2.plant(K_env=20, K_env_aug=10)),
         ('stiffer', mo.PlantV2.plant(K_env=40, K_env_aug=10)),
         ('stiffest', mo.PlantV2.plant(K_env=60, K_env_aug=10)),
         ('stiffest2', mo.PlantV2.plant(K_env=80, K_env_aug=10))
     ])
 
     # controller descriptions:
-    # c0 = mo.Controllers.PI_v1(0, 12e-1)
-    # c0 = mo.Controllers.PI_v1(0, 12e-5)
+    # c0 = mo.Controllers.PI_v1(0, 8e-1)
     c0 = mo.Controllers.Qsyn(filename="Jan09_controller_statespace_general_configuration.npz")
 
     # analysis mode, nothing special, just step output and Nyquist to check the condition of robust stability.
@@ -38,7 +38,8 @@ if __name__ == '__main__':
         'freqs': np.logspace(-3, 2.56, 500),
         'recipe': [
             (0, 0, "step", (0, 0)),
-            (0, 1, "step", (0, 1)),
+            (0, 0, "step", (0, 1)),
+            (0, 1, "step", (1, 0)),
             (1, 0, "nyquist", (3, 3), omega_interested),
             (1, 1, "bode_mag", (1, 0), omega_interested),
             (2, 1, "bode_mag", (0, 0), omega_interested),

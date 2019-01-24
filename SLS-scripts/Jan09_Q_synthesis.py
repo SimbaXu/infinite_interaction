@@ -128,8 +128,8 @@ def synthesize_controller_general_configuration():
     Ts = 0.008
     s = co.tf([1, 0], [1])
 
-    plant_nominal = mo.PlantV2.plant(K_env=3.8, omega_add=-20, K_env_aug=60)
-    response_time = 0.1
+    plant_nominal = mo.PlantV2.plant(K_env=5, omega_add=-20, K_env_aug=60)
+    response_time = 0.17
     tracking_desired_resp = co.c2d(1 / (1 + response_time * s), Ts)
     rejection_desired_resp = co.c2d(3 * response_time * s / (1 + response_time * s), Ts)
     rejection_force_resp = co.c2d(response_time * s / (1 + response_time * s), Ts)
@@ -156,11 +156,15 @@ def synthesize_controller_general_configuration():
 
     def x_cmd_fdesired_shaping(omegas):
         s = co.tf([1, 0], [1])
-        return 0.5 * (1 / (1 + 0.03 * s) ** 2).freqresp(omegas)[0][0, 0]
+        return 0.5 * (1 / (1 + 0.02 * s)).freqresp(omegas)[0][0, 0]
 
     def x_cmd_fnoise_shaping(omegas):
         s = co.tf([1, 0], [1])
-        return 0.5 * (1 / (1 + 0.03 * s) ** 2).freqresp(omegas)[0][0, 0]
+        return 0.5 * (1 / (1 + 0.02 * s)).freqresp(omegas)[0][0, 0]
+
+    def x_cmd_x_env_shaping(omegas):
+        s = co.tf([1, 0], [1])
+        return 1.2 * (1 / (1 + 0.04 * s)).freqresp(omegas)[0][0, 0]
 
     f_error_fdesired_upper_bound = Ss.Qsyn.lambda_log_interpolate([[0.1, 1.05], [10, 1.05], [50, 1.05], [200, 1.05]])
 
@@ -198,6 +202,7 @@ def synthesize_controller_general_configuration():
             # [(3, 3), env_aug_shaping_function, False],
             [(1, 0), x_cmd_fdesired_shaping, False],
             [(1, 2), x_cmd_fnoise_shaping, False],
+            [(1, 1), x_cmd_x_env_shaping, False],
             # [(4, 4), lambda omegas: np.ones_like(omegas) * 50],
         ],
 
@@ -205,7 +210,7 @@ def synthesize_controller_general_configuration():
             [(3, 3), (-0.5, 0), 1.57, (2, 60)],  # distance from (-1, 0): 0.5
             # [(3, 3), (0, 0), 0.643, (8, 35)],  # distance from (-1, 0): 0.6
             # [(3, 3), (0, 0), 0.775, (1, 34)],  # distance from (-1, 0): 0.7
-            [(3, 3), (-0.5, 0), 1.57, (60, 120)]
+            [(3, 3), (-0.5, 0), 1.57, (60, 220)]
         ],
 
         'additional-time-vars': [
@@ -214,7 +219,7 @@ def synthesize_controller_general_configuration():
             ['step', (1, 1)]
         ],
         'additional-freq-vars': [
-            (4, 4), (0, 0), (1, 0), (3, 3), (1, 2), (2, 0)
+            (4, 4), (0, 0), (1, 0), (3, 3), (1, 2), (2, 0), (1, 1)
         ]
     }
 
@@ -235,9 +240,12 @@ def synthesize_controller_general_configuration():
                 (1, 1, "bode_mag", env_aug_shaping_function, omega_interested),
 
                 (2, 1, "bode_mag", (1, 0), omega_interested),
+                (2, 1, "bode_mag", (1, 1), omega_interested),
                 (2, 1, "bode_mag", (1, 2), omega_interested),
                 (2, 1, "bode_mag", x_cmd_fnoise_shaping),
                 (2, 1, "bode_mag", x_cmd_fdesired_shaping),
+                (2, 1, "bode_mag", x_cmd_x_env_shaping),
+
                 # (2, 0, 'q')
                 (2, 0, 'bode_mag', (2, 0)),
                 (2, 0, 'bode_mag', f_error_fdesired_upper_bound)
@@ -250,7 +258,6 @@ def synthesize_controller_general_configuration():
     if input("Convert controller to state-space and save for later analysis?") == "y":
         K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(
             data['Qtaps'], data['Pyu'])
-
         np.savez("Jan09_controller_statespace_general_configuration.npz",
                  A=K_Qparam_ss.A, B=K_Qparam_ss.B,
                  C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
@@ -262,7 +269,7 @@ def synthesize_controller_general_configuration():
     if input("Print controller for execution") == "y":
         from importlib import reload
         reload(print_controllers)
-        print_controllers.print_controller("Q_syn0_0", data, scale_output=1e-3)
+        print_controllers.print_controller("Q_syn1_0", data, scale_output=1e-3)
 
 if __name__ == '__main__':
     synthesize_controller_general_configuration()
