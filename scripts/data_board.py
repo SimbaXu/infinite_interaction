@@ -25,6 +25,7 @@ class DataCollector(object):
         self.number_data_points = number_data_points
         self.current_index = 0
         self.total_index = 0
+        self.has_new_data = False
 
     def callback(self, msg):
         """
@@ -34,6 +35,7 @@ class DataCollector(object):
         self.data[self.current_index, 0:len(msg.data)] = msg.data
         self.current_index = (self.current_index + 1) % self.number_data_points
         self.total_index += 1
+        self.has_new_data = True
 
 
 if __name__ == '__main__':
@@ -70,12 +72,19 @@ if __name__ == '__main__':
     for axes_index, (ymin, ymax) in yranges:
         axs[axes_index].set_ylim(ymin, ymax)
 
+    handles_latest_total_indices = [-1] * len(handles)
+
     # This function is called periodically from FuncAnimation
     def animate(i):
 
         # handle each item in handles list
         for handle_idx, (axes_index, topic_name, indies) in enumerate(handles):
             coll = data_collector_dict[topic_name]
+
+            if handles_latest_total_indices[handle_idx] == coll.total_index:
+                continue
+            else:
+                handles_latest_total_indices[handle_idx] = coll.total_index
 
             xdata = np.array(
                 range(coll.total_index - number_store_points,

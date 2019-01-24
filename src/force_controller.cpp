@@ -279,6 +279,9 @@ class HybridForceController {
     double search_velocity_mm_sec_; /* Velocity to search for horizontal surface */
     double search_force_threshold_; /* Threshold for surface detection */
     double safety_force_threshold_;
+    double initial_desired_force_;
+    double distance_stopband_;  // (in meter) control = control if abs(control) > deadzone, otherwise 0
+    double force_deadzone_; // if f_measure in [f_desired - f_deadzone, f_desired + f_deadzone], f_error = 0
 
     std::shared_ptr<SignalBlock> position2joint_map_ptr_;
 
@@ -331,6 +334,9 @@ public:
         try_load_param("search_velocity_mm_sec", search_velocity_mm_sec_, (double) 1);
         try_load_param("search_force_threshold", search_force_threshold_, (double) 2.0);
         try_load_param("safety_force_threshold", safety_force_threshold_, (double) 20);
+        try_load_param("initial_desired_force", initial_desired_force_, (double) 2);
+        try_load_param("positional_deadzone", distance_stopband_, (double) 0);
+        try_load_param("force_deadzone", force_deadzone_, (double) 0);
 
         // load force controller first, so that assertion error is thrown without affecting other
         Zaxis_force_controller_ptr_ = std::make_shared<SISOForceControllerManager>(force_controller_id_, nh_);
@@ -429,9 +435,8 @@ public:
         int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
         int cy_idx = 0;  // cycle index
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
-        setpoints_[2] = 2; // initial force threshold set to 2 Newton.
-        double distance_stopband_;  // stopband to prevent frictional hysteresis
-        distance_stopband_ = 0.01e-3;
+        double current_Zaxis_command;  // use to store current command position
+        setpoints_[2] = initial_desired_force_; // initial force threshold set to the same as search_force_threshold_
 
         control_state_id_ = 1; // init control state to 1, touching down.
 //        control_state_id_ = 2;
@@ -486,10 +491,43 @@ public:
                     ros::shutdown();
                 }
 
+//                // compute Z-axsi force signal
+//                Zaxis_force_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement
+//                // if the force_measure_Z is not in [f_desired - deadzone, f_desired + deadzone], nothing changes
+//                if (force_measure_[2] > force_deadzone_ + setpoints_[2]){
+//                    Zaxis_force_controller_inputs_[0] = setpoints_[2] + force_deadzone_;  // Z-axis force measurement
+//                }
+//                else if (force_measure_[2] < setpoints_[2] - force_deadzone_){
+//                    Zaxis_force_controller_inputs_[0] = setpoints_[2] - force_deadzone_;  // Z-axis force measurement
+//                }
+//                // otherwise, set the measured force to be the same as the desired value
+//                else{
+//                    Zaxis_force_controller_inputs_[0] = force_measure_[2];  // Z-axis force measurement
+//                }
+
                 // compute Z-axsi force signal
                 Zaxis_force_controller_inputs_[0] = setpoints_[2];  // desired force
-                Zaxis_force_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement, to be adjusted with stop band
+                // if the force_measure_Z is not in [f_desired - deadzone, f_desired + deadzone], nothing changes
+                if (ABS(force_measure_[2] - setpoints_[2]) > force_deadzone_){
+                    Zaxis_force_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement
+                }
+                    // otherwise, set the measured force to be the same as the desired value
+                else{
+                    Zaxis_force_controller_inputs_[1] = setpoints_[2];  // Z-axis force measurement
+                }
+                current_Zaxis_command = Zaxis_force_controller_output_;
+
+
                 Zaxis_force_controller_ptr_->compute(Zaxis_force_controller_inputs_, Zaxis_force_controller_output_);
+
+                if (ABS(Zaxis_force_controller_output_ - current_Zaxis_command) < distance_stopband_)
+                {
+                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes very little, setting to unchanged!");
+                    Zaxis_force_controller_output_ = current_Zaxis_command;
+                }
+                else{
+                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes: " << Zaxis_force_controller_output_ - current_Zaxis_command);
+                }
 
                 // compute cartesian command
                 cartesian_cmd_[0] = setpoints_[0];
@@ -516,7 +554,7 @@ public:
 
             // send joint position command
             clock_gettime(CLOCK_MONOTONIC, &wake_spec);
-//            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
+            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
             robot_ptr_->SetActiveDOFValues(joint_cmd_); // update in openrave viewer
             clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 

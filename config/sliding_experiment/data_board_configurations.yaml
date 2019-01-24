@@ -1,15 +1,18 @@
 data_board:
   layout: [1, 2]
   number_store_points: 5000
-  time_window_sec: 120
+  time_window_sec: 40
 
   handles:
     - [0, "/debugger/cartesian_force_measurement", 0]
     - [0, "/debugger/cartesian_force_measurement", 1]
+    - [0, "/debugger/cartesian_force_measurement", 2]
+    - [0, "/debugger/cartesian_command", 2]
+
     - [1, "/debugger/cartesian_command", 2]
   
   axes_configs:
     yranges:
-      - [0, [-2, 2]]
-      - [1, [-0.2, 0.2]]
+      - [0, [-2, 40]]
+      - [1, [-0.1, 0.1]]
 

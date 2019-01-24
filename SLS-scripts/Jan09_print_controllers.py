@@ -4,13 +4,13 @@ import os.path as path
 import yaml
 
 
-def print_controller(controller_name, controller_or_Qdata):
+def print_controller(controller_name, controller_or_Qdata, scale_output=1e-3):
     """Print a controller to yaml file.
 
     Controllers can be either a pair of discrete-time filters, or a
     dictionary of optimization result.
     """
-    DATA_DIR = "~/catkin_ws/src/infinite_interaction/config/hybrid_force_controllers"
+    DATA_DIR = "~/catkin_ws/src/infinite_interaction/config/sliding_experiment"
     if type(controller_or_Qdata) == co.TransferFunction:
         assert controller_or_Qdata.inputs == 2
         assert controller_or_Qdata.outputs == 1
@@ -25,6 +25,7 @@ def print_controller(controller_name, controller_or_Qdata):
 
         controller_data = {
             'type': 'integral',
+            'scale_output': scale_output,
             'filter00_b': num1,
             'filter00_a': den1,
             'filter01_b': num2,
@@ -32,9 +33,9 @@ def print_controller(controller_name, controller_or_Qdata):
         }
 
     elif type(controller_or_Qdata) == dict:  # Q synthesis dictionary
-        Ntaps = controller_or_Qdata['Qtaps'].shape[0] / 2
-        taps1 = controller_or_Qdata['Qtaps'][:Ntaps]
-        taps2 = controller_or_Qdata['Qtaps'][Ntaps:]
+        Ntaps = int(controller_or_Qdata['Qtaps'].shape[0] / 2)
+        taps1 = controller_or_Qdata['Qtaps'][:Ntaps].tolist()
+        taps2 = controller_or_Qdata['Qtaps'][Ntaps:].tolist()
         zPyu = controller_or_Qdata['zPyu']
 
         num1 = [float(x) for x in zPyu.num[0][0]]
@@ -47,12 +48,13 @@ def print_controller(controller_name, controller_or_Qdata):
 
         controller_data = {
             'type': 'Q_synthesis',
-            'taps00': taps1,
-            'taps01': taps2,
-            'zPyu_filter00_b': num1,
-            'zPyu_filter00_a': den1,
-            'zPyu_filter10_b': num2,
-            'zPyu_filter10_a': den2,
+            'scale_output': scale_output,
+            'filter_Q_00_taps': taps1,
+            'filter_Q_01_taps': taps2,
+            'filter_zPyu_00_b': num1,
+            'filter_zPyu_00_a': den1,
+            'filter_zPyu_10_b': num2,
+            'filter_zPyu_10_a': den2,
         }
 
     # save controller to disk
@@ -65,8 +67,17 @@ def print_controller(controller_name, controller_or_Qdata):
 
 
 if __name__ == "__main__":
-    # declare name and controller to print
-    controller_to_print = pool.Controllers.PI_v1()
-    controller_name = "integral0_0"
 
-    print_controller(controller_name, controller_to_print)
+    # PI controller integral0_0:
+    # This controller works with environments having stiffness around 3N/mm to 4 N/mm
+    # Examples: foam sheets, and so on
+    # Unstable with stiffer environment
+    # controller_to_print = pool.Controllers.PI_v1(0, 12e-1)
+    # controller_name = "integral0_0"
+
+    # PI controller integral1_0:
+    # This controller works with stiff environments having stiffness around 60 N/mm
+    controller_to_print = pool.Controllers.PI_v1(0, 1e-1)
+    controller_name = "integral1_0"
+
+    print_controller(controller_name, controller_to_print, scale_output=1e-3)

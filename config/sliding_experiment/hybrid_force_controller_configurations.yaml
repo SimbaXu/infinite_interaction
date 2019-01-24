@@ -3,7 +3,7 @@ hybrid_force_controller:
 
   # This parameter selects the active controller
   # active_controller: Q_syn
-  active_controller: integral
+  active_controller: integral_stiff
 
   debug: true
   viewer: false
@@ -16,8 +16,11 @@ hybrid_force_controller:
   robot_control_method: direct
 
   search_velocity_mm_sec: 1
-  search_force_threshold: 2.0  # need to be positive
-  safety_force_threshold: 20
+  search_force_threshold: 2.0
+  initial_desired_force: 4
+  safety_force_threshold: 100
+  positional_deadzone: 0.0 # control = control if abs(control) > deadzone, otherwise 0
+  force_deadzone: 0.0  # N
 
   gam: 1.0e-5
   gam2: 0.0e-5
@@ -39,3 +42,8 @@ hybrid_force_controller:
     type: PI
     controllers:
       - /controllers/integral0_0  # controller 0, version 0
+
+  integral_stiff:
+    type: PI
+    controllers:
+      - /controllers/integral1_0  # controller 0, version 0
