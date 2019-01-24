@@ -1754,9 +1754,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="2.8284271"
-     inkscape:cx="1045.2032"
-     inkscape:cy="942.55759"
+     inkscape:zoom="1.4142136"
+     inkscape:cx="886.49353"
+     inkscape:cy="772.5047"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -3527,10 +3527,10 @@
          style="font-size:12.5px">K_env</tspan></text>
     <path
        style="fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#marker5273-5)"
-       d="m 848.46193,352.75317 0,-63.48316 43.79342,0"
+       d="m 848.46193,327.29733 0,-38.02732 43.79342,0"
        id="path4997-4"
        inkscape:path-effect="#path-effect4999-9"
-       inkscape:original-d="m 848.46193,352.75317 0,-63.48316 43.79342,0"
+       inkscape:original-d="m 848.46193,327.29733 0,-38.02732 43.79342,0"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="ccc" />
     <path
@@ -4107,19 +4107,19 @@
        id="rect4138-35-7-6-28"
        width="103.54895"
        height="39.342133"
-       x="797.10052"
-       y="354.69113" />
+       x="787.90814"
+       y="329.23529" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:50px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       x="812.67462"
-       y="376.17242"
+       x="800.65381"
+       y="353.89856"
        id="text5367-3-0-2-7-9-4-3"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan5369-6-6-6-9-7-0-8"
-         x="812.67462"
-         y="376.17242"
+         x="800.65381"
+         y="353.89856"
          style="font-size:12.5px">x_cmd_scale</tspan></text>
     <rect
        style="color:#000000;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#cccccc;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.69668561;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
