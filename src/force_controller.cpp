@@ -44,7 +44,7 @@ class SISOForceControllerManager {
     int controller_type_;  // Q_synthesis: 0, PI: 1
 
     // internal states
-    double state0_=0, state1_=0;
+    double beta0_=0, beta1_=0;
 
 public:
     /*! Initialize from a ros parameter path, load controllers from the server.
@@ -163,14 +163,27 @@ public:
 
     int get_nb_controller() {return controller_ptrs_.size();}
 
+    /*! Compute the output of a 1-by-2 Q-based controller
+     *
+     * Implement the algorithm given in the paper.
+     *
+     * @param inputs
+     * @param output
+     */
     void compute_Q(const std::vector<double> & inputs, double & output){
-        // TODO: rename state0, state1 to something more descriptive
-        output = (controller_ptrs_[active_controller_idx_][0]->compute(inputs[0] - state0_)
-                + controller_ptrs_[active_controller_idx_][1]->compute(inputs[1] - state1_));
-        state0_ = controller_ptrs_[active_controller_idx_][2]->compute(output);
-        state1_ = controller_ptrs_[active_controller_idx_][3]->compute(output);
+        output = (controller_ptrs_[active_controller_idx_][0]->compute(inputs[0] - beta0_)
+                + controller_ptrs_[active_controller_idx_][1]->compute(inputs[1] - beta1_));
+        beta0_ = controller_ptrs_[active_controller_idx_][2]->compute(output);
+        beta1_ = controller_ptrs_[active_controller_idx_][3]->compute(output);
         output = output * scale_output_;
     }
+
+     /*! Compute the output of a 1-by-2 linear controller
+     *
+     *
+     * @param inputs
+     * @param output
+     */
     void compute_PI(const std::vector<double> & inputs, double & output){
         output = (controller_ptrs_[active_controller_idx_][0]->compute(inputs[0])
                   + controller_ptrs_[active_controller_idx_][1]->compute(inputs[1]));
@@ -259,6 +272,8 @@ class HybridForceController {
     double force_controller_output_ = 0;
     std::vector<double> cartesian_cmd_;
 
+    int control_state_id_; // state index
+
     std::vector<double> setpoints_;  /* variables used for setpoints*/
     // NOTE on setpoint: In the second state of force control, this variable is freqently looked up
     // in the main control loop. In fact, exactly once per loop. The details of which index is used
@@ -298,9 +313,6 @@ public:
 
         // load force controller first, so that assertion error is thrown without affecting other
         Zaxis_force_controller_ptr_ = std::make_shared<SISOForceControllerManager>("/" + force_controller_id_, nh_);
-
-        // default force tracking level: 5N
-        setpoints_[2] = 2;
 
         // load hardware handles
         if (robot_control_method_ == "ros_control"){
@@ -355,7 +367,7 @@ public:
     };
 
     void setpoint_subscriber_setup(){
-        setpoints_subscriber_ = nh_.subscribe("setpoints", 3, &HybridForceController::setpoint_callback, this);
+        setpoints_subscriber_ = nh_.subscribe("setpoints", 3, &HybridForceController::setpoint_callback_, this);
     }
 
     void debugger_setup(){
@@ -396,11 +408,12 @@ public:
         const int FOUR_MS = 4000000;
         int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
         int cy_idx = 0;  // cycle index
-        int state_id; // state index, see below for details
-        state_id = 1;
-//        state_id = 2;
-//        ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
+        setpoints_[2] = 2; // initial force threshold set to 2 Newton.
+
+        control_state_id_ = 1; // init control state to 1, touching down.
+//        control_state_id_ = 2;
+//        ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
 
         // two states loop designs
         //  [state 1] -> [states 2]
@@ -424,10 +437,10 @@ public:
             wrench2force_map_ptr_->set_state(joint_measure_);
             force_measure_ = wrench2force_map_ptr_->compute(wrench_measure_);
 
-            if (state_id == 1){
+            if (control_state_id_ == 1){
                 if (force_measure_[2] > search_force_threshold_) {
                     ROS_INFO_STREAM("Vertical component of measured force: "<< force_measure_[2] << ". Touch down successfuly.");
-                    state_id = 2;
+                    control_state_id_ = 2;
                     surface_height = cartesian_cmd_[2];
                 }
                 else {
@@ -435,12 +448,12 @@ public:
                 }
             }
 
-            else if (state_id == 2){
+            else if (control_state_id_ == 2){
                 // safety measure
                 if (ABS(force_measure_[0]) > safety_force_threshold_ or ABS(force_measure_[1]) > safety_force_threshold_ or ABS(force_measure_[2]) > safety_force_threshold_){
                     ROS_ERROR_STREAM("Measure force too high. Shutdown to prevent damaging the robot!");
                     ros::shutdown();
-                    state_id = 3;
+                    control_state_id_ = 3;
                 }
 
                 // switch controller
@@ -460,7 +473,7 @@ public:
                 cartesian_cmd_[2] = surface_height + force_controller_output_;
             }
             else {
-                ROS_FATAL_STREAM("Encounter illegal/non-action state_id: " << state_id << ". Shutting down.");
+                ROS_FATAL_STREAM("Encounter illegal/non-action control_state_id_: " << control_state_id_ << ". Shutting down.");
                 ros::shutdown();
             }
             //publish data for identification
@@ -493,7 +506,7 @@ public:
                     ROS_DEBUG_STREAM("wake - deadline-to-send: " << diff_nsec << " nsec (this value should be very small, ideally less than 1e4)");
                     RTUtils::diff_timespec(diff_nsec, slp_dline_spec, sent_spec);
                     ROS_DEBUG_STREAM("sent - deadline-to-send: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
-                    ROS_DEBUG_STREAM("current state: " << state_id);
+                    ROS_DEBUG_STREAM("current state: " << control_state_id_);
                 }
             }
             cy_idx = (cy_idx + 1) % 2147483640;
@@ -534,8 +547,11 @@ public:
     }
 
 private:
-    void setpoint_callback(const std_msgs::Float64MultiArray& multiarray_msg){
-        ROS_DEBUG_STREAM("in setpoint callback");
+    void setpoint_callback_(const std_msgs::Float64MultiArray &multiarray_msg){
+        ROS_DEBUG_STREAM_THROTTLE(1, "in setpoint callback");
+        if (control_state_id_ == 1){
+            ROS_ERROR_STREAM("Attempt to change setpoint during state 1. Error occurs.");
+        }
         setpoints_[0] = multiarray_msg.data[0];
         setpoints_[1] = multiarray_msg.data[1];
         setpoints_[2] = multiarray_msg.data[2];
