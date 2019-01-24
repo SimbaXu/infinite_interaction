@@ -3,6 +3,7 @@ import control as co
 import numpy as np
 import matplotlib.pyplot as plt
 import Jan09_plant_pool as mo
+import Jan09_print_controllers as print_controllers
 
 
 def gen_description(Plant, *key):
@@ -242,18 +243,26 @@ def synthesize_controller_general_configuration():
                 (2, 0, 'bode_mag', f_error_fdesired_upper_bound)
             ]
         }
-        Ss.Qsyn.Q_synthesis_analysis(data, analysis_dict, output_descriptions=mo.PlantV2.output_descriptions, input_descriptions=mo.PlantV2.input_descriptions)
+        Ss.Qsyn.Q_synthesis_analysis(
+            data, analysis_dict, output_descriptions=mo.PlantV2.output_descriptions,
+            input_descriptions=mo.PlantV2.input_descriptions)
 
-    if input("Save controller for later analysis?") == "y":
+    if input("Convert controller to state-space and save for later analysis?") == "y":
         K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(
             data['Qtaps'], data['Pyu'])
-        np.savez("Jan09_controller_statespace_general_configuration.npz", A=K_Qparam_ss.A, B=K_Qparam_ss.B,
+
+        np.savez("Jan09_controller_statespace_general_configuration.npz",
+                 A=K_Qparam_ss.A, B=K_Qparam_ss.B,
                  C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
 
     import IPython
     if IPython.get_ipython() is None:
         IPython.embed()
 
+    if input("Print controller for execution") == "y":
+        from importlib import reload
+        reload(print_controllers)
+        print_controllers.print_controller("Q_syn0_0", data, scale_output=1e-3)
 
 if __name__ == '__main__':
     synthesize_controller_general_configuration()
