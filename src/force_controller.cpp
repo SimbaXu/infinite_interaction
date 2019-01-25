@@ -442,10 +442,10 @@ public:
         setpoints_[2] = initial_desired_force_; // initial force threshold set to the same as search_force_threshold_
 
         control_state_id_ = 1; // init control state to 1, touching down.
-//        control_state_id_ = 2;
-//        ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
+	control_state_id_ = 2;
+	ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
 
-        // two states loop designs
+	// two states loop designs
         //  [state 1] -> [states 2]
         //
         // Descriptpion:

@@ -75,9 +75,14 @@ if __name__ == "__main__":
     # controller_to_print = pool.Controllers.PI_v1(0, 12e-1)
     # controller_name = "integral0_0"
 
-    # PI controller integral1_0:
-    # This controller works with stiff environments having stiffness around 60 N/mm
-    controller_to_print = pool.Controllers.PI_v1(0, 1e-1)
-    controller_name = "integral1_0"
+    # # PI controller integral1_0:
+    # # This controller works with stiff environments having stiffness around 60 N/mm
+    # controller_to_print = pool.Controllers.PI_v1(0, 1e-1)
+    # controller_name = "integral1_0"
+
+    # PI controller integral2_0:
+    # This controller moves in free-space at the same speed as Qsyn1_0
+    controller_to_print = pool.Controllers.PI_v1(0, 8e-1)
+    controller_name = "integral2_0"
 
     print_controller(controller_name, controller_to_print, scale_output=1e-3)

@@ -47,9 +47,15 @@ hybrid_force_controller:
   integral:
     type: PI
     controllers:
-      - /controllers/integral0_0  # controller 0, version 0
+      - /controllers/integral0_0  # see Jan09_print_controllers.py for details
+
+  integral_samespeed:
+    type: PI
+    controllers:
+      - /controllers/integral2_0  # see Jan09_print_controllers.py for details
+
 
   integral_stiff:
     type: PI
     controllers:
-      - /controllers/integral1_0  # controller 0, version 0
+      - /controllers/integral1_0  # see Jan09_print_controllers.py for details
