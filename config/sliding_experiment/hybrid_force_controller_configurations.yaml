@@ -1,28 +1,39 @@
-# this is also the name of the controller node.
+# name of the controller node.
 hybrid_force_controller:
 
-  # This parameter selects the active controller
+  # active controller selection
   active_controller: Q_syn
   # active_controller: integral_stiff
 
+  # misc parameters
   debug: true
   viewer: false
 
-  # common parameters specific to the robot
+  # system setup
   scene_path: robots/denso_ft_sensor_gripper.robot.xml
   robot_name: denso_ft_sensor_gripper
   manip_frame: gripper
   ftsensor_frame: ft_sensor
   robot_control_method: direct
 
-  search_velocity_mm_sec: 1
+  # Z-axis force control parameters
+  search_velocity_mm_sec: 1.0
   search_force_threshold: 2.0
-  initial_desired_force: 8
-  safety_force_threshold: 100
+  initial_desired_force: 5.0
+  safety_force_threshold: 50.0
   positional_deadzone: 0.0 # control = control if abs(control) > deadzone, otherwise 0
   force_deadzone: 0.0  # N
   joint_command_deadzone: 0.0 # joint movement needs to be greater than this value
 
+  # execution commands
+  commands:
+    desired_force: 5.0
+    trajectory:  # list of (time, dx, dy)
+      - [0, 0, 0]
+      - [30, 0, 0.20]
+  
+
+  # inverse kinematic parameters
   gam: 1.0e-5
   gam2: 0.0e-5
 
