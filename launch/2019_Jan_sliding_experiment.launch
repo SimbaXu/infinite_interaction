@@ -8,6 +8,7 @@
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral0_0.yaml"/> 
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral1_0.yaml"/> 
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral2_0.yaml"/> 
+  <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral3_0.yaml"/> 
 
   <!-- Q-synthesis controller profiles -->
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/Q_syn0_0.yaml"/> 
@@ -21,6 +22,6 @@
 	args="--address 192.168.0.22 --rate 250"/>
   <node name="hybrid_force_controller" pkg="infinite_interaction" type="hybrid_force_controller" output="screen"/>
 
-  <!-- <node name="data_board" pkg="infinite_interaction" type="data_board.py"/> -->
+  <node name="data_board" pkg="infinite_interaction" type="data_board.py"/>
 
 </launch>

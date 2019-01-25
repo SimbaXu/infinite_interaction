@@ -2,8 +2,10 @@
 hybrid_force_controller:
 
   # active controller selection
-  active_controller: Q_syn
+  # active_controller: Q_syn
   # active_controller: integral_stiff
+  active_controller: integral_samespeed
+  # active_controller: integral_still
 
   # misc parameters
   debug: true
@@ -28,10 +30,9 @@ hybrid_force_controller:
   # execution commands
   commands:
     desired_force: 5.0
-    trajectory:  # list of (time, dx, dy)
+    waypoints:  # list of (time, dx, dy)
       - [0, 0, 0]
-      - [30, 0, 0.20]
-  
+      - [60, 0, -0.30]
 
   # inverse kinematic parameters
   gam: 1.0e-5
@@ -54,8 +55,12 @@ hybrid_force_controller:
     controllers:
       - /controllers/integral2_0  # see Jan09_print_controllers.py for details
 
-
   integral_stiff:
     type: PI
     controllers:
       - /controllers/integral1_0  # see Jan09_print_controllers.py for details
+
+  integral_still:
+    type: PI
+    controllers:
+      - /controllers/integral3_0  # see Jan09_print_controllers.py for details

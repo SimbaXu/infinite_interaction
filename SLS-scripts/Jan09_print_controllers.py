@@ -82,7 +82,12 @@ if __name__ == "__main__":
 
     # PI controller integral2_0:
     # This controller moves in free-space at the same speed as Qsyn1_0
-    controller_to_print = pool.Controllers.PI_v1(0, 8e-1)
+    controller_to_print = pool.Controllers.PI_v1(0, 7.5e-1)
     controller_name = "integral2_0"
+
+    # # PI controller integral3_0:
+    # # This controller always produces zero motion
+    # controller_to_print = pool.Controllers.PI_v1(0, 0e-1)
+    # controller_name = "integral3_0"
 
     print_controller(controller_name, controller_to_print, scale_output=1e-3)
