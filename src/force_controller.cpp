@@ -24,21 +24,24 @@ void SetViewer(OpenRAVE::EnvironmentBasePtr penv, const std::string& viewername)
 }
 
 
-/*! A combined class computes controls from sensory data.
+/*! Multi-profiles Linear Controller with 2-inputs and 1-output
  *
- * ControllerManager can
- * - manages multiple Z-axis force controllers,
- * - load them from ROS parameter server,
- * - switch between them,
- * - know how to execute the feedback structure of the Q controller, and
+ * Use this class as a generic linear controlle with 1-output and 2-inputs. Users
+ * initialize a controller using the path of a parameter on ROS parameter server.
+ *
+ * In addition, user can switch between different profiles in the same controllers.
+ * However, note that this functionality is not completely thought out.
+ *
+ * - manages multiple controller profiles,
+ * - switch between profiles,
  * - scale output signal accordingly.
  *
  * NOTE: Currently this class is only used to handle one controller.
  */
-class SISOForceControllerManager {
+class LinearController2In1Out{
     // A vector of controllers, each is a vector of pointers to filters. If there are two filters per vector,
     // it is a PI. If there are four filters per vector, it is a Q-synthesis controller. Sequence: Q0, Q1, zPyu0, zPyu1
-    std::vector<std::vector<std::shared_ptr<DiscreteTimeFilter> > > controller_ptrs_;
+    std::vector<std::vector<std::shared_ptr<DiscreteTimeFilter> > > profile_ptrs_;
     int active_controller_idx_;  // Index of the active controller
     int nb_filters_; // Nb. of filters an individual controller have. This must be the same for all controllers in the pool.
     float scale_output_;  // Scale output with this value before returning.
@@ -57,6 +60,7 @@ public:
      *
      * controllers:
      *   awesome_controller:
+     *     type: Q_synthesis
      *     filter_Q_00_a: [0, 1, 2]
      *     filter_Q_00_b: [0, 1, 2]
      *     filter_Q_01_a: [0, 1, 2]
@@ -78,7 +82,7 @@ public:
      *
      * @param controller_path Path to the hybrid controller profile.
      */
-    SISOForceControllerManager(std::string controller_path, ros::NodeHandle nh): active_controller_idx_(0), scale_output_(1) {
+    LinearController2In1Out(std::string controller_path, ros::NodeHandle nh): active_controller_idx_(0), scale_output_(1) {
         // controller type
         if (!nh.getParam(controller_path + "/type", controller_type_str_))
         {
@@ -88,74 +92,74 @@ public:
             ROS_INFO_STREAM("Loading a controller of [" << controller_type_str_ << "] type.");
         }
         if (controller_type_str_ == "Q_synthesis") controller_type_ = 0;
-        else if (controller_type_str_ == "PI") controller_type_ = 1;
+        else if (controller_type_str_ == "PI" or controller_type_str_ == "transfer_matrix") controller_type_ = 1;
         else {
             ROS_ERROR_STREAM("Unknown controller type: " << controller_type_str_ << " .Shutting down.");
             ros::shutdown();
         }
 
         // load individual controllers
-        std::vector<std::string> all_controller_paths;  // paths to controllers
-        if (!nh.getParam(controller_path + "/controllers", all_controller_paths)){
+        std::vector<std::string> profile_paths;  // paths to controllers
+        if (!nh.getParam(controller_path + "/profiles", profile_paths)){
             ROS_ERROR_STREAM("Unable to load individual controllers of " << controller_path << ". Are the controllers loaded?");
         }
         else {
-            ROS_INFO_STREAM("Preparing to load " << all_controller_paths.size() << " individual controller!");
+            ROS_INFO_STREAM("Preparing to load " << profile_paths.size() << " individual controller!");
         }
 
         std::vector<double> b, a, taps;
         std::vector<std::shared_ptr<DiscreteTimeFilter> > filter_ptrs;  // a vector of pointers to filter, representing an individual force controller
         bool ret;
-        for (int i = 0; i < all_controller_paths.size(); ++i) {
+        for (int i = 0; i < profile_paths.size(); ++i) {
             // obtain scale factor for controller output
-            ret = nh.getParam(all_controller_paths[i] + "/scale_output", scale_output_);
+            ret = nh.getParam(profile_paths[i] + "/scale_output", scale_output_);
             if (!ret) ROS_ERROR_STREAM("Unable to load scale_output for individual controller: " << i);
             else{
                 ROS_INFO_STREAM("Loading an individual controller of type: [" << controller_type_str_ <<"]. Output is scaled by: " << scale_output_);
             }
 
             // if is a PI type controller
-            if (controller_type_str_ == "PI"){
+            if (controller_type_ == 1){
                 ret = true;
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter00_a", a);
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter00_b", b);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter00_a", a);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter00_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter00 = std::make_shared<DiscreteTimeFilter>(b, a);
 
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter01_a", a);
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter01_b", b);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter01_a", a);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter01_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter01 = std::make_shared<DiscreteTimeFilter>(b, a);
 
                 filter_ptrs.clear();
                 filter_ptrs.push_back(filter00);
                 filter_ptrs.push_back(filter01);
-                controller_ptrs_.push_back(filter_ptrs);
+                profile_ptrs_.push_back(filter_ptrs);
 
             }
 
-            if (controller_type_str_ == "Q_synthesis"){
+            if (controller_type_ == 0){
 	        // sequence to store filters of a Q_synthesis controllers:
 	        // Q filters first, row-major orders
 	        // zPyu filters, row-major orders
                 ret = true;
 
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_Q_00_taps", taps);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_Q_00_taps", taps);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter_Q_00 = std::make_shared<DiscreteTimeFilter>(taps);
 
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_Q_01_taps", taps);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_Q_01_taps", taps);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter_Q_01 = std::make_shared<DiscreteTimeFilter>(taps);
 
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_zPyu_00_a", a);
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_zPyu_00_b", b);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_zPyu_00_a", a);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_zPyu_00_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter_zPzu_00 = std::make_shared<DiscreteTimeFilter>(b, a);
 
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_zPyu_10_a", a);
-                ret = ret && nh.getParam(all_controller_paths[i] + "/filter_zPyu_10_b", b);
-                if (!ret) ROS_ERROR_STREAM("Unable to load individual controller: " << i);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_zPyu_10_a", a);
+                ret = ret && nh.getParam(profile_paths[i] + "/filter_zPyu_10_b", b);
+                if (!ret) ROS_ERROR_STREAM("Unable to load profile: " << profile_paths[i]);
                 auto filter_zPzu_10 = std::make_shared<DiscreteTimeFilter>(b, a);
 
                 filter_ptrs.clear();
@@ -163,7 +167,7 @@ public:
                 filter_ptrs.push_back(filter_Q_01);
                 filter_ptrs.push_back(filter_zPzu_00);
                 filter_ptrs.push_back(filter_zPzu_10);
-                controller_ptrs_.push_back(filter_ptrs);
+                profile_ptrs_.push_back(filter_ptrs);
             }
         }
     };
@@ -188,10 +192,10 @@ public:
      * @param output
      */
     void compute_Q(const std::vector<double> & inputs, double & output){
-        output = (controller_ptrs_[active_controller_idx_][0]->compute(inputs[0] - beta0_)
-                + controller_ptrs_[active_controller_idx_][1]->compute(inputs[1] - beta1_));
-        beta0_ = controller_ptrs_[active_controller_idx_][2]->compute(output);
-        beta1_ = controller_ptrs_[active_controller_idx_][3]->compute(output);
+        output = (profile_ptrs_[active_controller_idx_][0]->compute(inputs[0] - beta0_)
+                + profile_ptrs_[active_controller_idx_][1]->compute(inputs[1] - beta1_));
+        beta0_ = profile_ptrs_[active_controller_idx_][2]->compute(output);
+        beta1_ = profile_ptrs_[active_controller_idx_][3]->compute(output);
         output = output * scale_output_;
     }
 
@@ -204,8 +208,8 @@ public:
      * @param output
      */
     void compute_PI(const std::vector<double> & inputs, double & output){
-        output = (controller_ptrs_[active_controller_idx_][0]->compute(inputs[0])
-                  + controller_ptrs_[active_controller_idx_][1]->compute(inputs[1]));
+        output = (profile_ptrs_[active_controller_idx_][0]->compute(inputs[0])
+                  + profile_ptrs_[active_controller_idx_][1]->compute(inputs[1]));
         output = output * scale_output_;
     }
     /*! Switch active controller to one with given index
@@ -214,7 +218,7 @@ public:
      * @return true if success, false otherwise
      */
     bool switch_controller(int controller_idx){
-        if (controller_idx < 0 or controller_idx > controller_ptrs_.size())
+        if (controller_idx < 0 or controller_idx > profile_ptrs_.size())
             // immediately return failure
             return false;
         else if (controller_idx == active_controller_idx_)
@@ -222,7 +226,7 @@ public:
             return true;
         // copy state
         for (int i = 0; i < nb_filters_; ++i) {
-            if (not controller_ptrs_[controller_idx][i]->copy_state_from(controller_ptrs_[active_controller_idx_][i])) return false;
+            if (not profile_ptrs_[controller_idx][i]->copy_state_from(profile_ptrs_[active_controller_idx_][i])) return false;
         }
 
         // switch controller
@@ -232,10 +236,10 @@ public:
 };
 
 
-/*! Hybrid force controller with Q-synthesis/PI control law.
+/*! Aorce controller with Q-synthesis/PI control law.
  *
  */
-class HybridForceController {
+class CartesianForceController {
     ros::NodeHandle nh_;
     std::string robot_ns_ = "denso";  // this namespace is used only when using the Denso's ros_control component
     bool debug_mode_;  // turn on class-wide debug
@@ -271,11 +275,23 @@ class HybridForceController {
     OpenRAVE::RobotBasePtr robot_ptr_;
     OpenRAVE::RobotBase::ManipulatorPtr manip_ptr_;
 
-    // core signal blocks
-    std::shared_ptr<SignalBlock> wrench2force_map_ptr_;
+    std::shared_ptr<SignalBlock> wrench2force_map_ptr_;  // wrench-to-Cartesian force transform
 
-    std::string force_controller_id_;
-    std::shared_ptr<SISOForceControllerManager> Zaxis_force_controller_ptr_;
+    std::string X_linear_controller_path_;  // path to X-axis linear controller
+    std::shared_ptr<LinearController2In1Out> X_linear_controller_ptr_;  // X-axis linear controller pointer
+    std::vector<double> X_linear_controller_inputs_;  // input vector to force controller
+    double X_linear_controller_output_;
+
+    std::string Y_linear_controller_path_;  // path to Y-axis linear controller
+    std::shared_ptr<LinearController2In1Out> Y_linear_controller_ptr_;  // Y-axis linear controller pointer
+    std::vector<double> Y_linear_controller_inputs_;  // input vector to force controller
+    double Y_linear_controller_output_;
+
+    std::string Z_linear_controller_path_;  // path to Z-axis linear controller
+    std::shared_ptr<LinearController2In1Out> Z_linear_controller_ptr_;  // Z-axis linear controller pointer
+    std::vector<double> Z_linear_controller_inputs_;  // input vector to force controller
+    double Z_linear_controller_output_;
+
     double search_velocity_mm_sec_; /* Velocity to search for horizontal surface */
     double search_force_threshold_; /* Threshold for surface detection */
     double safety_force_threshold_;
@@ -284,20 +300,18 @@ class HybridForceController {
     double force_deadzone_; // if f_measure in [f_desired - f_deadzone, f_desired + f_deadzone], f_error = 0
     double joint_command_deadzone_;
 
-    std::shared_ptr<SignalBlock> position2joint_map_ptr_;
+    std::shared_ptr<SignalBlock> position2joint_map_ptr_;  // cartesian position command to joint
 
     // variables used in RT loop
     std::vector<double> joint_cmd_;
     std::vector<double> joint_measure_;
     std::vector<double> wrench_measure_;  // wrench measurement
     std::vector<double> force_measure_;  // Cartesian force measurement
-    std::vector<double> Zaxis_force_controller_inputs_;  // input vector to force controller
-    double Zaxis_force_controller_output_ = 0;
     std::vector<double> cartesian_cmd_;
 
     int control_state_id_; // state index
 
-    std::vector<double> setpoints_;  /* variables used for setpoints*/
+    std::vector<double> setpoints_;  // setpoints to the three X, Y, Z force controllers respectively
     // NOTE on setpoint: In the second state of force control, this variable is freqently looked up
     // in the main control loop. In fact, exactly once per loop. The details of which index is used
     // for what signal is leave below.
@@ -315,9 +329,12 @@ public:
      *
      * @param nh ROS Node Handle
      */
-    HybridForceController(ros::NodeHandle nh): nh_(nh), setpoints_(10, 0), cartesian_cmd_(3, 0), joint_cmd_(6, 0), joint_measure_(6, 0),
-    force_measure_(3, 0), wrench_measure_(6, 0), Zaxis_force_controller_inputs_(2, 0),
-    safety_force_threshold_(20), identify_data_(2)
+    CartesianForceController(ros::NodeHandle nh): nh_(nh), setpoints_(10, 0), cartesian_cmd_(3, 0), joint_cmd_(6, 0), joint_measure_(6, 0),
+                                                  force_measure_(3, 0), wrench_measure_(6, 0),
+                                                  X_linear_controller_inputs_(2, 0), X_linear_controller_output_(0),
+                                                  Y_linear_controller_inputs_(2, 0), Y_linear_controller_output_(0),
+                                                  Z_linear_controller_inputs_(2, 0), Z_linear_controller_output_(0),
+                                                  safety_force_threshold_(20), identify_data_(2)
     {
         ROS_INFO("-- Initializing Hybrid Force Controller");
 
@@ -331,7 +348,6 @@ public:
         try_load_param("robot_control_method", robot_control_method_, std::string("ros_control"));
 
         // force control-related stuffs
-        try_load_param("active_controller", force_controller_id_);
         try_load_param("search_velocity_mm_sec", search_velocity_mm_sec_, (double) 1);
         try_load_param("search_force_threshold", search_force_threshold_, (double) 2.0);
         try_load_param("safety_force_threshold", safety_force_threshold_, (double) 20);
@@ -340,8 +356,15 @@ public:
         try_load_param("force_deadzone", force_deadzone_, (double) 0);
         try_load_param("joint_command_deadzone", joint_command_deadzone_, (double) 0.0);
 
-        // load force controller first, so that assertion error is thrown without affecting other
-        Zaxis_force_controller_ptr_ = std::make_shared<SISOForceControllerManager>(force_controller_id_, nh_);
+        // Load controllers. Might throw assertion error.
+        try_load_param("X_active_controller", X_linear_controller_path_);
+        X_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(X_linear_controller_path_, nh_);
+
+        try_load_param("Z_active_controller", Z_linear_controller_path_);
+        Z_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(Z_linear_controller_path_, nh_);
+
+        try_load_param("Y_active_controller", Y_linear_controller_path_);
+        Y_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(Y_linear_controller_path_, nh_);
 
         // load hardware handles
         if (robot_control_method_ == "ros_control"){
@@ -361,7 +384,7 @@ public:
         identificator_publisher_ptr_ = std::make_shared<InfInteraction::TopicDebugger>(identificator_ns_, nh_);
         identificator_pub_id_ = identificator_publisher_ptr_->register_multiarray("raw_data");
 
-        // Create an OpenRAVE instance for kinematic computations (Jacobian and stuffs)
+        // Kinematic computations (Jacobian and stuffs) via OpenRAVE
         OpenRAVE::RaveInitialize(true); // start openrave core
         env_ptr_ = OpenRAVE::RaveCreateEnvironment(); // create the main environment
         if (viewer_on_) boost::thread thviewer(boost::bind(SetViewer, env_ptr_, viewer_name_));  // create viewer
@@ -388,14 +411,13 @@ public:
         // inverse kinematics map
         // Inverse Kinematics: Converts Cartesian signals to joint coordinates
         double gam, gam2;  // weights for regulation of dq, and of (q_current - q_init)
-
         try_load_param("gam", gam, 0.01);
         try_load_param("gam2", gam2, 0.01);
         position2joint_map_ptr_ = std::make_shared<InfInteraction::CartPositionTracker>(robot_ptr_, manip_frame_name_, joint_init_, gam, gam2);
     };
 
     void setpoint_subscriber_setup(){
-        setpoints_subscriber_ = nh_.subscribe("setpoints", 3, &HybridForceController::setpoint_callback_, this);
+        setpoints_subscriber_ = nh_.subscribe("setpoints", 3, &CartesianForceController::setpoint_callback_, this);
     }
 
     void debugger_setup(){
@@ -416,7 +438,7 @@ public:
         debugger_ptr_->publish_multiarray(debug_q_cmd_id_, joint_cmd_);
     }
 
-    bool start(){
+    bool start_force_control(){
         char start_decision;
         std::cout << "Start hybrid force control? y/[n]: ";
         std::cin >> start_decision;
@@ -437,15 +459,15 @@ public:
         int diff_nsec; // time difference between (i) the deadline to wake up and (ii) the time when the message is received.
         int cy_idx = 0;  // cycle index
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
-        double current_Zaxis_command;  // use to store current command position
+        double Z_current_output_;  // use to store current command position
         std::vector<double> new_joint_command(6);
         setpoints_[2] = initial_desired_force_; // initial force threshold set to the same as search_force_threshold_
 
         control_state_id_ = 1; // init control state to 1, touching down.
-	control_state_id_ = 2;
-	ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
+        control_state_id_ = 2;
+        ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
 
-	// two states loop designs
+        // two states loop designs
         //  [state 1] -> [states 2]
         //
         // Descriptpion:
@@ -486,56 +508,49 @@ public:
             }
 
             else if (control_state_id_ == 2){
-                ROS_INFO_STREAM_ONCE("Hybrid force controller switches to active force control, listening to setpoints!");
+                ROS_INFO_STREAM_ONCE("[Force controller] switches to active force control, listening to setpoints!");
 
                 // switch controller
-                if (!Zaxis_force_controller_ptr_->switch_controller(static_cast<int>(std::round(setpoints_[3])))){
+                if (!Z_linear_controller_ptr_->switch_controller(static_cast<int>(std::round(setpoints_[3])))){
                     ROS_ERROR_STREAM("Unable to switch controller. Shutting down.");
                     ros::shutdown();
                 }
 
-//                // compute Z-axsi force signal
-//                Zaxis_force_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement
-//                // if the force_measure_Z is not in [f_desired - deadzone, f_desired + deadzone], nothing changes
-//                if (force_measure_[2] > force_deadzone_ + setpoints_[2]){
-//                    Zaxis_force_controller_inputs_[0] = setpoints_[2] + force_deadzone_;  // Z-axis force measurement
-//                }
-//                else if (force_measure_[2] < setpoints_[2] - force_deadzone_){
-//                    Zaxis_force_controller_inputs_[0] = setpoints_[2] - force_deadzone_;  // Z-axis force measurement
-//                }
-//                // otherwise, set the measured force to be the same as the desired value
-//                else{
-//                    Zaxis_force_controller_inputs_[0] = force_measure_[2];  // Z-axis force measurement
-//                }
 
-                // compute Z-axsi force signal
-                Zaxis_force_controller_inputs_[0] = setpoints_[2];  // desired force
+                // Z-axis linear controller
+                Z_linear_controller_inputs_[0] = setpoints_[2];  // desired force
                 // if the force_measure_Z is not in [f_desired - deadzone, f_desired + deadzone], nothing changes
                 if (ABS(force_measure_[2] - setpoints_[2]) > force_deadzone_){
-                    Zaxis_force_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement
+                    Z_linear_controller_inputs_[1] = force_measure_[2];  // Z-axis force measurement
                 }
                     // otherwise, set the measured force to be the same as the desired value
                 else{
-                    Zaxis_force_controller_inputs_[1] = setpoints_[2];  // Z-axis force measurement
+                    Z_linear_controller_inputs_[1] = setpoints_[2];  // Z-axis force measurement
                 }
-                current_Zaxis_command = Zaxis_force_controller_output_;
-
-
-                Zaxis_force_controller_ptr_->compute(Zaxis_force_controller_inputs_, Zaxis_force_controller_output_);
-
-                if (ABS(Zaxis_force_controller_output_ - current_Zaxis_command) < distance_stopband_)
+                Z_current_output_ = Z_linear_controller_output_;
+                Z_linear_controller_ptr_->compute(Z_linear_controller_inputs_, Z_linear_controller_output_);
+                if (ABS(Z_linear_controller_output_ - Z_current_output_) < distance_stopband_)
                 {
                     ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes very little, setting to unchanged!");
-                    Zaxis_force_controller_output_ = current_Zaxis_command;
+                    Z_linear_controller_output_ = Z_current_output_;
                 }
                 else{
-                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes: " << Zaxis_force_controller_output_ - current_Zaxis_command);
+                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes: " << Z_linear_controller_output_ - Z_current_output_);
                 }
+
+                // X-axis linear controller
+                X_linear_controller_inputs_[0] = setpoints_[0];
+                X_linear_controller_inputs_[1] = force_measure_[0];
+                X_linear_controller_ptr_->compute(X_linear_controller_inputs_, X_linear_controller_output_);
+
+                Y_linear_controller_inputs_[0] = setpoints_[1];
+                Y_linear_controller_inputs_[1] = force_measure_[1];
+                Y_linear_controller_ptr_->compute(Y_linear_controller_inputs_, Y_linear_controller_output_);
 
                 // compute cartesian command
                 cartesian_cmd_[0] = setpoints_[0];
                 cartesian_cmd_[1] = setpoints_[1];
-                cartesian_cmd_[2] = surface_height + Zaxis_force_controller_output_;
+                cartesian_cmd_[2] = surface_height + Z_linear_controller_output_;
             }
             else {
                 ROS_FATAL_STREAM("Encounter illegal/non-action control_state_id_: " << control_state_id_ << ". Shutting down.");
@@ -562,7 +577,7 @@ public:
 
             // send joint position command
             clock_gettime(CLOCK_MONOTONIC, &wake_spec);
-            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
+//            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
             robot_ptr_->SetActiveDOFValues(joint_cmd_); // update in openrave viewer
             clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
@@ -632,9 +647,9 @@ private:
 int main(int argc, char **argv){
     ros::init(argc, argv, "hybrid_force_controller");
     ros::NodeHandle nh("~");
-    HybridForceController controller(nh);
+    CartesianForceController controller(nh);
     if (!ros::isShuttingDown()){
-        controller.start();
+        controller.start_force_control();
     }
     return 0;
 }

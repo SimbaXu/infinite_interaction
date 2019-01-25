@@ -1,11 +1,15 @@
 # name of the controller node.
 hybrid_force_controller:
 
-  # active controller selection
-  # active_controller: Q_syn
-  # active_controller: integral_stiff
-  active_controller: integral_samespeed
-  # active_controller: integral_still
+  # position control
+  X_active_controller: position_feedthrough
+  Y_active_controller: position_feedthrough
+
+  # force control
+  Z_active_controller: Q_syn
+  # Z_active_controller: integral_stiff
+  # Z_active_controller: integral_samespeed
+  # Z_active_controller: integral_still
 
   # misc parameters
   debug: true
@@ -38,29 +42,38 @@ hybrid_force_controller:
   gam: 1.0e-5
   gam2: 0.0e-5
 
-  # controllers definitiosn
+  # Linear controller definitions;
+  # Each linear controller has a list of profiles, each profile is a
+  # different linear controller. This is to support controller
+  # switching.
+
   Q_syn:
     type: Q_synthesis
-    controllers:
-      # - /controllers/Q_syn0_0  # controller 0, version 0
-      - /controllers/Q_syn1_0  # controller 0, version 0
+    profiles:
+      # - /controllers/Q_syn0_0  # first profile
+      - /controllers/Q_syn1_0  # a better profile
 
   integral:
     type: PI
-    controllers:
+    profiles:
       - /controllers/integral0_0  # see Jan09_print_controllers.py for details
 
   integral_samespeed:
     type: PI
-    controllers:
+    profiles:
       - /controllers/integral2_0  # see Jan09_print_controllers.py for details
 
   integral_stiff:
     type: PI
-    controllers:
+    profiles:
       - /controllers/integral1_0  # see Jan09_print_controllers.py for details
 
   integral_still:
     type: PI
-    controllers:
+    profiles:
       - /controllers/integral3_0  # see Jan09_print_controllers.py for details
+
+  position_feedthrough:
+    type: transfer_matrix
+    profiles:
+      - /profiles/feedthrough
