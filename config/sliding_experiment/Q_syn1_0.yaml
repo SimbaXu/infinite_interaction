@@ -1413,10 +1413,10 @@ controllers:
     - 0.0
     - 0.0
     filter_zPyu_10_b:
+    - 0.0
+    - 0.0
+    - 0.0
     - -0.8364355310995469
     - 0.0
-    - 0
-    - 0
-    - 0
     scale_output: 0.001
     type: Q_synthesis

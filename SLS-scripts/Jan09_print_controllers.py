@@ -4,24 +4,26 @@ import os.path as path
 import yaml
 
 
-def print_controller(controller_name, controller_or_Qdata, scale_output=1e-3):
+DATA_DIR = "~/catkin_ws/src/infinite_interaction/config/sliding_experiment"
+
+
+def print_controller(controller_name, controller_or_Qdata, scale_output=1e-3, DATA_DIR=DATA_DIR):
     """Print a controller to yaml file.
 
     Controllers can be either a pair of discrete-time filters, or a
     dictionary of optimization result.
     """
-    DATA_DIR = "~/catkin_ws/src/infinite_interaction/config/sliding_experiment"
     if type(controller_or_Qdata) == co.TransferFunction:
         assert controller_or_Qdata.inputs == 2
         assert controller_or_Qdata.outputs == 1
 
         num1 = [float(x) for x in controller_or_Qdata.num[0][0]]
         den1 = [float(x) for x in controller_or_Qdata.den[0][0]]
-        num1 = num1 + [0] * (len(den1) - len(num1))
+        num1 = [0.0] * (len(den1) - len(num1)) + num1
 
         num2 = [float(x) for x in controller_or_Qdata.num[0][1]]
         den2 = [float(x) for x in controller_or_Qdata.den[0][1]]
-        num2 = num2 + [0] * (len(den2) - len(num2))
+        num2 = [0.0] * (len(den2) - len(num2)) + num2
 
         controller_data = {
             'type': 'integral',
@@ -40,11 +42,11 @@ def print_controller(controller_name, controller_or_Qdata, scale_output=1e-3):
 
         num1 = [float(x) for x in zPyu.num[0][0]]
         den1 = [float(x) for x in zPyu.den[0][0]]
-        num1 = num1 + [0] * (len(den1) - len(num1))
+        num1 = [0.0] * (len(den1) - len(num1)) + num1
 
         num2 = [float(x) for x in zPyu.num[1][0]]
         den2 = [float(x) for x in zPyu.den[1][0]]
-        num2 = num2 + [0] * (len(den2) - len(num2))
+        num2 = [0.0] * (len(den2) - len(num2)) + num2
 
         controller_data = {
             'type': 'Q_synthesis',
