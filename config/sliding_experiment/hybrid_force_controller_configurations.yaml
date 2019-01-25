@@ -2,8 +2,9 @@
 hybrid_force_controller:
 
   # This parameter selects the active controller
-  active_controller: Q_syn
-  # active_controller: integral_stiff
+  # active_controller: Q_syn
+  active_controller: integral_samespeed
+  # active_controller: integral
 
   debug: true
   viewer: false
@@ -17,7 +18,7 @@ hybrid_force_controller:
 
   search_velocity_mm_sec: 1
   search_force_threshold: 2.0
-  initial_desired_force: 8
+  initial_desired_force: 4
   safety_force_threshold: 100
   positional_deadzone: 0.0 # control = control if abs(control) > deadzone, otherwise 0
   force_deadzone: 0.0  # N
@@ -36,9 +37,15 @@ hybrid_force_controller:
   integral:
     type: PI
     controllers:
-      - /controllers/integral0_0  # controller 0, version 0
+      - /controllers/integral0_0  # see Jan09_print_controllers.py for details
+
+  integral_samespeed:
+    type: PI
+    controllers:
+      - /controllers/integral2_0  # see Jan09_print_controllers.py for details
+
 
   integral_stiff:
     type: PI
     controllers:
-      - /controllers/integral1_0  # controller 0, version 0
+      - /controllers/integral1_0  # see Jan09_print_controllers.py for details

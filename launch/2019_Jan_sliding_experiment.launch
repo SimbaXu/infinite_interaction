@@ -4,8 +4,12 @@
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/hybrid_force_controller_configurations.yaml"/> 
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/data_board_configurations.yaml"/> 
 
+  <!-- PI controller profiles -->
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral0_0.yaml"/> 
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral1_0.yaml"/> 
+  <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/integral2_0.yaml"/> 
+
+  <!-- Q-synthesis controller profiles -->
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/Q_syn0_0.yaml"/> 
   <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/Q_syn1_0.yaml"/> 
 
