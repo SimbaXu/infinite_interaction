@@ -295,7 +295,6 @@ class CartesianForceController {
     double search_velocity_mm_sec_; /* Velocity to search for horizontal surface */
     double search_force_threshold_; /* Threshold for surface detection */
     double safety_force_threshold_;
-    double initial_desired_force_;
     double distance_stopband_;  // (in meter) control = control if abs(control) > deadzone, otherwise 0
     double force_deadzone_; // if f_measure in [f_desired - f_deadzone, f_desired + f_deadzone], f_error = 0
     double joint_command_deadzone_;
@@ -316,6 +315,7 @@ class CartesianForceController {
     // in the main control loop. In fact, exactly once per loop. The details of which index is used
     // for what signal is leave below.
     ros::Subscriber setpoints_subscriber_;
+    std::vector<double> initial_setpoints_; // initial value of setpoints
 
 public:
     /*! Initialize a HybridForceController instance.
@@ -351,18 +351,17 @@ public:
         try_load_param("search_velocity_mm_sec", search_velocity_mm_sec_, (double) 1);
         try_load_param("search_force_threshold", search_force_threshold_, (double) 2.0);
         try_load_param("safety_force_threshold", safety_force_threshold_, (double) 20);
-        try_load_param("initial_desired_force", initial_desired_force_, (double) 2);
         try_load_param("positional_deadzone", distance_stopband_, (double) 0);
         try_load_param("force_deadzone", force_deadzone_, (double) 0);
         try_load_param("joint_command_deadzone", joint_command_deadzone_, (double) 0.0);
+        try_load_param("initial_setpoints", initial_setpoints_);
+
 
         // Load controllers. Might throw assertion error.
         try_load_param("X_active_controller", X_linear_controller_path_);
         X_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(X_linear_controller_path_, nh_);
-
         try_load_param("Z_active_controller", Z_linear_controller_path_);
         Z_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(Z_linear_controller_path_, nh_);
-
         try_load_param("Y_active_controller", Y_linear_controller_path_);
         Y_linear_controller_ptr_ = std::make_shared<LinearController2In1Out>(Y_linear_controller_path_, nh_);
 
@@ -461,8 +460,12 @@ public:
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
         double Z_current_output_;  // use to store current command position
         std::vector<double> new_joint_command(6);
-        setpoints_[2] = initial_desired_force_; // initial force threshold set to the same as search_force_threshold_
 
+
+        for(int i=0; i < initial_setpoints_.size(); i++){
+            setpoints_[i] = initial_setpoints_[i];
+
+        }
         control_state_id_ = 1; // init control state to 1, touching down.
         control_state_id_ = 2;
         ROS_ERROR_STREAM("Initial state is set to 2 for testing. Change it back.");
@@ -543,6 +546,7 @@ public:
                 X_linear_controller_inputs_[1] = force_measure_[0];
                 X_linear_controller_ptr_->compute(X_linear_controller_inputs_, X_linear_controller_output_);
 
+                // Y-axis linear controller
                 Y_linear_controller_inputs_[0] = setpoints_[1];
                 Y_linear_controller_inputs_[1] = force_measure_[1];
                 Y_linear_controller_ptr_->compute(Y_linear_controller_inputs_, Y_linear_controller_output_);
@@ -577,7 +581,7 @@ public:
 
             // send joint position command
             clock_gettime(CLOCK_MONOTONIC, &wake_spec);
-//            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
+            robot_hw_ptr_-> send_jnt_command(joint_cmd_);
             robot_ptr_->SetActiveDOFValues(joint_cmd_); // update in openrave viewer
             clock_gettime(CLOCK_MONOTONIC, &sent_spec);
 
@@ -612,6 +616,9 @@ public:
         if (!nh_.getParam(param_path, param)){
             ROS_ERROR_STREAM("Unable to find ["<< param_path <<"] on param server. Shutting down!");
             ros::shutdown();
+        }
+        else {
+            ROS_INFO_STREAM("Param loaded from [" << param_path << "].");
         }
     }
 
