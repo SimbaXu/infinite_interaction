@@ -1,0 +1,16 @@
+controllers:
+  admittance_v1:
+    filter00_a:
+    - 1.0
+    filter00_b:
+    - 0.0
+    filter01_a:
+    - 1.0
+    - -1.9762857097579092
+    - 0.9762857097579093
+    filter01_b:
+    - 0.0
+    - 5.290921442746566e-06
+    - 5.248763109255705e-06
+    scale_output: 1
+    type: integral

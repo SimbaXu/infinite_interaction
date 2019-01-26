@@ -1,10 +1,14 @@
 admittance_controller:
 
   # set admittance control
-  X_active_controller: admittance_v0
-  Y_active_controller: admittance_v0
-  Z_active_controller: admittance_v0
 
+  # X_active_controller: admittance_v0
+  # Y_active_controller: admittance_v0
+  # Z_active_controller: admittance_v0
+
+  X_active_controller: admittance_v1
+  Y_active_controller: admittance_v1
+  Z_active_controller: admittance_v1
 
   # misc parameters
   debug: true
@@ -18,7 +22,7 @@ admittance_controller:
   robot_control_method: direct
 
   initial_setpoints: [0.0, 0.0, 0.0]
-  safety_force_threshold: 10.0
+  safety_force_threshold: 50.0
 
   # inverse kinematic parameters
   gam: 1.0e-5
@@ -30,10 +34,15 @@ admittance_controller:
     profiles:
       - /controllers/Q_syn_admittance_v0
 
+  # m=2.5,b=12,k=0
   admittance_v0:
     type: transfer_matrix
     profiles:
       - /controllers/admittance_v0
 
-
+  # m=6,b=18,k=0
+  admittance_v1:
+    type: transfer_matrix
+    profiles:
+      - /controllers/admittance_v1
 

@@ -1,0 +1,13 @@
+profiles:
+  feedthrough:
+    filter00_a:
+      - 1.0
+    filter00_b:
+      - 1.0
+    filter01_a:
+      - 1.0
+    filter01_b:
+      - 0
+    scale_output: 1.0
+
+  
