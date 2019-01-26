@@ -21,9 +21,9 @@ if __name__ == '__main__':
     ])
 
     # controller descriptions:
-    # c0 = mo.Controllers.Admittance(m=2.5, b=12, k=0)
+    c0 = mo.Controllers.Admittance(m=2.5, b=12, k=0)
     # c0 = mo.Controllers.Admittance(m=6.0, b=18, k=0)
-    c0 = mo.Controllers.Qsyn(filename="Nov21_synthesize_teaching_controller_general_configuration.npz")
+    # c0 = mo.Controllers.Qsyn(filename="Nov21_synthesize_teaching_controller_general_configuration.npz")
 
     # analysis mode, nothing special, just step output and Nyquist to check the condition of robust stability.
     omega_interested = [1, 5, 10, 20, 40, 80, 100, 200]

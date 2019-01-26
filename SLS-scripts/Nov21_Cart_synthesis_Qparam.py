@@ -57,14 +57,14 @@ def synthesize_teaching_controller_general_configuration():
     k_env_nom = 40
     m_desired = 1.5
     b_desired = 8
-    response_time = 0.4
+    response_time = 0.8
 
     # desired response from w3 to z1
     plant_nominal = pool.PlantV3.plant(K_env=40, m_tip=0.07, K_env_aug=1000)
 
-    # Specifications
-    noise_atten_func = Ss.Qsyn.lambda_log_interpolate(
-        [[0.1, 0.1], [10, 0.1], [20, 0.02], [25, 0.01], [30, 0.01], [50, 0.005], [200, 0.002]], preview=False)
+    def xcmd_xenv_upper_bound(omegas):
+        s = co.tf([1, 0], [1])
+        return (1 / (1 + 0.08 * s) ** 2).freqresp(omegas)[0][0, 0]
 
     # fmeasure_xenv_desired_tf = co.c2d(co.tf([m_desired * k_env_nom, b_desired * k_env_nom, 0], [m_desired, b_desired, 0 + k_env_nom]), Ts)
     fmeasure_xenv_desired_tf = co.c2d(40 * response_time * s / (1 + response_time * s), Ts)
@@ -87,7 +87,7 @@ def synthesize_teaching_controller_general_configuration():
             # [(0, 1), fmeasure_xenv_desired_tf, 'inf', 1.0]
         ],
         'constraint-freq': [
-            # [(1, 1), noise_atten_func, False],
+            [(1, 1), xcmd_xenv_upper_bound, False],
         ],
 
         'reg2': 1,
@@ -130,6 +130,7 @@ def synthesize_teaching_controller_general_configuration():
                 (1, 0, "nyquist", (3, 3), omega_interested),
 
                 (2, 1, "bode_mag", (1, 1), omega_interested),
+                (2, 1, "bode_mag", xcmd_xenv_upper_bound),
                 # (2, 1, "bode_mag", (1, 1), omega_interested),
                 # (2, 1, "bode_mag", (1, 2), omega_interested),
             ]
