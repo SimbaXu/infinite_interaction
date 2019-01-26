@@ -146,14 +146,12 @@ def synthesize_teaching_controller_general_configuration():
                  A=K_Qparam_ss.A, B=K_Qparam_ss.B,
                  C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
 
-    if input("Print controller for execution") == "y":
+    if input("Print controller for execution? y/[n]: ") == "y":
+        DATA_DIR='~/catkin_ws/src/infinite_interaction/config/teaching_experiment'
         import Jan09_print_controllers as print_controllers
         from importlib import reload
         reload(print_controllers)
-        print_controllers.print_controller(
-            "Q_syn0_0", synthesis_result,
-            scale_output=1,
-            DATA_DIR='~/catkin_ws/src/infinite_interaction/config/teaching_experiment')
+        print_controllers.print_controller("Q_syn_admittance_v0", synthesis_result, scale_output=1, DATA_DIR=DATA_DIR)
 
     import IPython
     if IPython.get_ipython() is None:
