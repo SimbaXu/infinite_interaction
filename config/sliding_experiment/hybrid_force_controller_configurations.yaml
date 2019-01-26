@@ -32,6 +32,10 @@ hybrid_force_controller:
 
   initial_setpoints: [0.0, 0.0, 5.0]  # setpoints (position X, position Y, desired force Z)
   
+  # inverse kinematic parameters
+  gam: 1.0e-5
+  gam2: 0.0e-5
+
   # execution commands
   commands:
     desired_force: 5.0
@@ -39,9 +43,6 @@ hybrid_force_controller:
       - [0, 0, 0]
       - [60, 0, -0.30]
 
-  # inverse kinematic parameters
-  gam: 1.0e-5
-  gam2: 0.0e-5
 
   # Linear controller definitions;
   # Each linear controller has a list of profiles, each profile is a

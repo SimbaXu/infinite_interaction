@@ -1,0 +1,39 @@
+admittance_controller:
+
+  # set admittance control
+  X_active_controller: admittance_v0
+  Y_active_controller: admittance_v0
+  Z_active_controller: admittance_v0
+
+
+  # misc parameters
+  debug: true
+  viewer: false
+
+  # system setup
+  scene_path: robots/denso_ft_sensor_gripper.robot.xml
+  robot_name: denso_ft_sensor_gripper
+  manip_frame: gripper
+  ftsensor_frame: ft_sensor
+  robot_control_method: direct
+
+  initial_setpoints: [0.0, 0.0, 0.0]
+  safety_force_threshold: 10.0
+
+  # inverse kinematic parameters
+  gam: 1.0e-5
+  gam2: 0.0e-5
+
+  # Linear controller definitions;
+  Q_syn:
+    type: Q_synthesis
+    profiles:
+      - /controllers/Q_syn_admittance_v0
+
+  admittance_v0:
+    type: transfer_matrix
+    profiles:
+      - /controllers/admittance_v0
+
+
+

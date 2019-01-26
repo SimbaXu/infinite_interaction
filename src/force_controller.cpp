@@ -552,8 +552,8 @@ public:
                 Y_linear_controller_ptr_->compute(Y_linear_controller_inputs_, Y_linear_controller_output_);
 
                 // compute cartesian command
-                cartesian_cmd_[0] = setpoints_[0];
-                cartesian_cmd_[1] = setpoints_[1];
+                cartesian_cmd_[0] = X_linear_controller_output_;
+                cartesian_cmd_[1] = Y_linear_controller_output_;
                 cartesian_cmd_[2] = surface_height + Z_linear_controller_output_;
             }
             else {
