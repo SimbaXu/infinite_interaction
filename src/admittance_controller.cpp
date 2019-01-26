@@ -73,7 +73,7 @@ int main(int argc, char **argv)
         robot_handle = std::make_shared<HWHandle::JointPositionController> (robot_ns, node_handle);
     }
     else if (robot_control_method == "direct"){
-       robot_handle = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr);
+       robot_handle = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr, 1);
     }
     DoubleVector jnt_init = robot_handle->get_latest_jnt();
 

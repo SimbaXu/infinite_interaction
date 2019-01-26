@@ -473,7 +473,7 @@ namespace HWHandle {
         /* Connect to the RC8 controller, start motor.
          *
          */
-        explicit RC8HWController(std::string ip_addr);
+        explicit RC8HWController(std::string ip_addr, int slave_mode_int);
 
         ~RC8HWController();
 

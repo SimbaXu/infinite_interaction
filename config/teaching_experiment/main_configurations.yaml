@@ -20,6 +20,7 @@ admittance_controller:
   manip_frame: gripper
   ftsensor_frame: ft_sensor
   robot_control_method: direct
+  slave_mode: 0  # 1 for J1, 0 for J0 (RTOS required)
 
   initial_setpoints: [0.0, 0.0, 0.0]
   safety_force_threshold: 50.0

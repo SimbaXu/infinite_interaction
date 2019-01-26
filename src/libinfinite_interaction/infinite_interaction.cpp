@@ -240,13 +240,16 @@ namespace HWHandle {
         return jnt_latest;
     }
 
-    RC8HWController::RC8HWController(std::string ip_addr){
+    RC8HWController::RC8HWController(std::string ip_addr, int slave_mode_int=1) {
         _rc8_controller_ptr = std::make_shared<denso_control::RC8ControllerInterface>(ip_addr);
-        _rc8_controller_ptr->setSlaveMode(slave_mode_);
-        if (slave_mode_==SlaveMode::J1){
-            ROS_WARN("Using J1 for controlling. Not the best experience. Consider changing to J0.");
+        if (slave_mode_int == 1){
+            slave_mode_ = SlaveMode::J1;
+            ROS_WARN("Using J1 for controlling. Not the best experience. Consider changing to J0 (RTOS required).");
         }
-
+        else if (slave_mode_int == 0){
+            slave_mode_ = SlaveMode::J0;
+        }
+        _rc8_controller_ptr->setSlaveMode(slave_mode_);
         bool ret;
 
         // connection
@@ -293,6 +296,8 @@ namespace HWHandle {
         _rc8_controller_ptr->getJointPositions(_jnt);
         return _jnt;
     }
+
+
 
 }
 

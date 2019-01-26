@@ -254,6 +254,7 @@ class CartesianForceController {
 
     std::string robot_control_method_ = "direct";
     std::string robot_ip_addr_ = "192.168.0.21";
+    int slave_mode_int_;
 
     std::shared_ptr<HWHandle::AbstractRobotController> robot_hw_ptr_;
     std::shared_ptr<FTSensorHandle> ft_hw_ptr_;
@@ -345,7 +346,9 @@ public:
         try_load_param("ftsensor_frame", ft_frame_name_);
         try_load_param("viewer", viewer_on_, false);
         try_load_param("debug", debug_mode_, false);
+
         try_load_param("robot_control_method", robot_control_method_, std::string("ros_control"));
+        try_load_param("slave_mode", slave_mode_int_, 1);
 
         // force control-related stuffs
         try_load_param("search_velocity_mm_sec", search_velocity_mm_sec_, (double) 1);
@@ -370,7 +373,7 @@ public:
             robot_hw_ptr_ = std::make_shared<HWHandle::JointPositionController> (robot_ns_, nh_);
         }
         else if (robot_control_method_ == "direct"){
-            robot_hw_ptr_ = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr_);
+            robot_hw_ptr_ = std::make_shared<HWHandle::RC8HWController> (robot_ip_addr_, slave_mode_int_);
         }
         joint_init_ = robot_hw_ptr_->get_latest_jnt();
 

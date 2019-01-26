@@ -21,6 +21,7 @@ hybrid_force_controller:
   manip_frame: gripper
   ftsensor_frame: ft_sensor
   robot_control_method: direct
+  slave_mode: 1  # 1 for J1, 0 for J0 (RTOS required)
 
   # Z-axis force control parameters
   search_velocity_mm_sec: 1.0
