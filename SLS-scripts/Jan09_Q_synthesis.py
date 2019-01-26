@@ -119,7 +119,6 @@ def synthesize_controller_scaled_1dof_configuration():
                  C=K_Qparam_ss.C, D=K_Qparam_ss.D, dt=K_Qparam_ss.dt)
 
 
-
 def synthesize_controller_general_configuration():
     """ Synthesize a controller in the general controller configuration.
 
@@ -129,6 +128,8 @@ def synthesize_controller_general_configuration():
     s = co.tf([1, 0], [1])
 
     plant_nominal = mo.PlantV2.plant(K_env=5, omega_add=-20, K_env_aug=60)
+
+    # Specifications
     response_time = 0.17
     tracking_desired_resp = co.c2d(1 / (1 + response_time * s), Ts)
     rejection_desired_resp = co.c2d(3 * response_time * s / (1 + response_time * s), Ts)

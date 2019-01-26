@@ -973,41 +973,44 @@ class Qsyn:
         fig, axs = plt.subplots(nrow, ncol, figsize=(10, 10))
 
         for entry in analysis_dict['recipe']:
-            i, j = entry[0], entry[1]
+            ax_i, ax_j = entry[0], entry[1]
             plot_type = entry[2]
             # plot the step response of H[i, j]
             if plot_type == 'step':
                 # format: i, j, 'step', (out_idx, in_idx), (out_idx2, in_idx2)
-                for k in range(3, len(entry)):
-                    io_idx = entry[k]
+                if type(entry[3]) is tuple:
+                    io_idx = entry[3]
                     data_output = data['time-vars'][(io_idx, 'step')].value
-                    axs[i, j].plot(T_sim, data_output,
-                                   label='step resp. {:}, {:}'.format(
-                                       output_descriptions[io_idx[0]],
-                                       input_descriptions[io_idx[1]]))
-                    axs[i, j].set_title('Step response')
+                    label = 'step resp. {:}, {:}'.format(output_descriptions[io_idx[0]],
+                                                         input_descriptions[io_idx[1]])
+                elif type(entry[3]) is co.TransferFunction:
+                    data_output = co.step_response(entry[3], T_sim)[1][0, :]
+                    label = 'step resp. (desired) {:}, {:}'.format(output_descriptions[io_idx[0]],
+                                                                   input_descriptions[io_idx[1]])
+                axs[ax_i, ax_j].plot(T_sim, data_output, label=label)
+                axs[ax_i, ax_j].set_title('Step response')
 
             elif plot_type == 'nyquist':
                 # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3)
                 # The last elements are [these are interested frequencies]
                 output_idx, input_idx = entry[3]
                 H_ij = data['freq-vars'][(output_idx, input_idx)].value
-                axs[i, j].plot(H_ij.real, H_ij.imag, '-x',
+                axs[ax_i, ax_j].plot(H_ij.real, H_ij.imag, '-x',
                                label='H {:},{:}'.format(
                                    output_descriptions[output_idx], input_descriptions[input_idx]
                                ))
-                axs[i, j].scatter([-1], [0], marker='x', c='red')
+                axs[ax_i, ax_j].scatter([-1], [0], marker='x', c='red')
 
                 if len(entry) > 4:
                     toplot_idx = []
                     for omega in entry[4]:
                         idx = np.argmin(np.abs(freqs - omega))
-                        axs[i, j].text(H_ij[idx].real, H_ij[idx].imag,
+                        axs[ax_i, ax_j].text(H_ij[idx].real, H_ij[idx].imag,
                                        "{:.3f} rad/s".format(freqs[idx]))
                         toplot_idx.append(idx)
-                    axs[i, j].scatter(H_ij[toplot_idx].real, H_ij[toplot_idx].imag)
+                    axs[ax_i, ax_j].scatter(H_ij[toplot_idx].real, H_ij[toplot_idx].imag)
 
-                axs[i, j].set_aspect('equal')
+                axs[ax_i, ax_j].set_aspect('equal')
 
             elif plot_type == 'bode_mag':
                 # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
@@ -1017,17 +1020,17 @@ class Qsyn:
                     H_ij = data['freq-vars'][(output_idx, input_idx)].value
                     label = '{:}, {:}'.format(
                         output_descriptions[output_idx], input_descriptions[input_idx])
-                    axs[i, j].plot(freqs, np.abs(H_ij), label=label)
+                    axs[ax_i, ax_j].plot(freqs, np.abs(H_ij), label=label)
                 except TypeError:
                     mag_ij = entry[3](analysis_dict['freqs'])
                     label = 'func: {:}, {:}'.format(
                         output_descriptions[output_idx], input_descriptions[input_idx])
-                    axs[i, j].plot(freqs, mag_ij, label=label)
+                    axs[ax_i, ax_j].plot(freqs, mag_ij, label=label)
 
-                axs[i, j].set_xscale('log')
-                axs[i, j].set_yscale('log')
-                axs[i, j].set_xlabel('Freq(rad/s)')
-                axs[i, j].set_title("Frequency Response (non-db)")
+                axs[ax_i, ax_j].set_xscale('log')
+                axs[ax_i, ax_j].set_yscale('log')
+                axs[ax_i, ax_j].set_xlabel('Freq(rad/s)')
+                axs[ax_i, ax_j].set_title("Frequency Response (non-db)")
 
             elif plot_type == 'bode_phs':
                 # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
@@ -1035,11 +1038,11 @@ class Qsyn:
                 H_ij = data['freq-vars'][(output_idx, input_idx)].value
                 label = '{:}, {:}'.format(
                     output_descriptions[output_idx], input_descriptions[input_idx])
-                axs[i, j].plot(freqs, np.angle(H_ij), label=label)
+                axs[ax_i, ax_j].plot(freqs, np.angle(H_ij), label=label)
 
-                axs[i, j].set_xscale('log')
-                axs[i, j].set_xlabel('Freq(rad/s)')
-                axs[i, j].set_title("Angle (rad)")
+                axs[ax_i, ax_j].set_xscale('log')
+                axs[ax_i, ax_j].set_xlabel('Freq(rad/s)')
+                axs[ax_i, ax_j].set_title("Angle (rad)")
 
             elif plot_type == 'q':
                 # format: i, j, 'q'
@@ -1049,13 +1052,13 @@ class Qsyn:
                 for iq in range(nu):
                     for jq in range(ny):
                         current_index = (iq * ny + jq) * Ntaps
-                        axs[i, j].plot(data['Qtaps'][current_index: current_index + Ntaps],
+                        axs[ax_i, ax_j].plot(data['Qtaps'][current_index: current_index + Ntaps],
                                        label='Q[{:d}, {:d}]'.format(iq, jq))
 
-        for i in range(nrow):
-            for j in range(ncol):
-                axs[i, j].grid()
-                axs[i, j].legend()
+        for ax_i in range(nrow):
+            for ax_j in range(ncol):
+                axs[ax_i, ax_j].grid()
+                axs[ax_i, ax_j].legend()
 
         fig.suptitle('Analysis plots: {:}'.format(controller_name))
         plt.tight_layout()

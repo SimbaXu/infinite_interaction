@@ -21,6 +21,9 @@ class PlantV3:
 
     See `data/drawings/PlantV1.svg` for a visualization of this plant
     model.
+
+    I use this model to synthesize controller for Admittance Control.
+
     """
     gen_exp_file = "PlantV3_gen_exp"
     z_idx_map = {
@@ -509,6 +512,16 @@ class Controllers:
         K_dtime_single = co.c2d(K_ctime_single, 0.008)
         PI_v1 = - Ss.tf_blocks([[K_dtime_single, - K_dtime_single]])
         return PI_v1
+
+    @staticmethod
+    def Admittance(m=1.0, b=1.0, k=1.0, Ts=0.008):
+        """ Classical Admittance Controller
+        """
+        s = co.tf([1, 0], [1])
+        admittance_model = 1.0 / (m * s ** 2 + b * s + k)
+        admittance_model_discrete = co.c2d(admittance_model, Ts)
+        controller = Ss.tf_blocks([[0, admittance_model_discrete]])
+        return controller
 
     @staticmethod
     def Qsyn(filename="Jan09_K_ss_params.npz"):
