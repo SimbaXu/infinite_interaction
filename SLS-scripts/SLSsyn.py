@@ -459,6 +459,31 @@ def plot_step_responses(P: co.TransferFunction, Tmax: float, input_descriptions=
     plt.show()
 
 
+def plot_phase_response(P: co.TransferFunction, freqs: np.ndarray, input_descriptions=range(10), output_descriptions=range(10), xlog=False, ylog=False):
+    """
+
+    Args:
+        P:
+        freqs:
+        input_descriptions:
+        output_descriptions:
+    """
+    fig, axs = plt.subplots(P.outputs, P.inputs, sharex=True)
+    for i in range(P.outputs):
+        axs[i, 0].set_ylabel(output_descriptions[i])
+        for j in range(P.inputs):
+            mag, angle, _ = P[i, j].freqresp(freqs)
+            axs[i, j].plot(freqs, angle[0, 0])
+            if xlog:
+                axs[i, j].set_xscale('log')
+            if ylog:
+                axs[i, j].set_yscale('log')
+            axs[i, j].grid()
+    for j in range(P.inputs):
+        axs[P.outputs - 1, j].set_xlabel(input_descriptions[j])
+    plt.show()
+
+
 def plot_freq_response(P: co.TransferFunction, freqs: np.ndarray, input_descriptions=range(10), output_descriptions=range(10), xlog=False, ylog=False):
     """
 
@@ -479,6 +504,7 @@ def plot_freq_response(P: co.TransferFunction, freqs: np.ndarray, input_descript
                 axs[i, j].set_xscale('log')
             if ylog:
                 axs[i, j].set_yscale('log')
+            axs[i, j].grid()
     for j in range(P.inputs):
         axs[P.outputs - 1, j].set_xlabel(input_descriptions[j])
     plt.show()

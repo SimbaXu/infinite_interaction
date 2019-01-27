@@ -53,6 +53,11 @@ if __name__ == '__main__':
     except KeyError:
         grid_on = []
 
+    try:
+        sharex = rospy.get_param("/data_board/axes_configs/sharex")
+    except KeyError:
+        sharex = True
+
     # subscribe to topic and do stuff
     data_collector_dict = {}
     for axes_index, topic_name, indies in handles:
@@ -62,7 +67,7 @@ if __name__ == '__main__':
             data_collector_dict[topic_name] = DataCollector(topic_name, number_store_points)
 
     # Create figure for plotting
-    fig, axs = plt.subplots(layout[0], layout[1])
+    fig, axs = plt.subplots(layout[0], layout[1], sharex=sharex)
     ys = []
 
     # Create a blank line. We will update the line in animate

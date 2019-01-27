@@ -34,9 +34,12 @@ class PlantV3:
     }
 
     input_descriptions = ['f_desired', 'x_env', 'f_noise', 'f_robust', 'w_add', 'u']
-    output_descriptions = ['f_measure', 'x_cmd', 'f_error', 'f_env_aug', 'z_add', 'y1', 'y2']
+    output_descriptions = ['f_measure', 'x_cmd', 'x_robot', 'f_env_aug', 'z_add', 'y1', 'y2']
+
+    # input_descriptions = ['f_desired', 'x_env', 'f_noise', 'f_robust', 'w_add', 'u']
+    # output_descriptions = ['f_measure', 'x_robot', 'y1', 'y2']
     @staticmethod
-    def plant(tau_R1=0.0437, K_env=40, omega_add=1, K_env_aug=1000,
+    def plant(tau_R1=0.0440, K_env=40, omega_add=1, K_env_aug=1000,
               f_scale=1, f_desired_scale=1, x_cmd_scale=1,
               x_env_scale=1, m_tip=0.07, Ts=0.008):
         """Apply dynamic parameters.
@@ -47,8 +50,7 @@ class PlantV3:
         s = co.tf([1, 0], [1])
         # R1 = 1 / (1 + tau_R1 * s) / (1 + 0.01 * s)   # robot first-order response
         R1 = 1 / (1 + tau_R1 * s)   # robot first-order response
-        m_tip = m_tip / (1 + 0.001 * s) ** 2
-
+        m_tip = m_tip / (1 + 0.01 * s)
         with open(PlantV3.gen_exp_file, 'r') as f:
             expr_string = f.read()
         exec(expr_string)
@@ -82,7 +84,7 @@ class PlantV3:
         eqs = []
         eqs.extend([
             # robot dynamics
-            Eq(x_robot, R1 * x_cmd * sym.exp(- 2 * Ts)),
+            Eq(x_robot, R1 * x_cmd * sym.exp( - 6 * Ts)),
             Eq(x_cmd, x_cmd_scale * u),
             Eq(u_out, u),
             Eq(v_robot, s * x_robot),
@@ -92,7 +94,7 @@ class PlantV3:
             Eq(x_robot, x_tip),
 
             # force measurement
-            Eq(f_measure, (f_act - m_tip * v_tip * s) * sym.exp(-Ts)),
+            Eq(f_measure, (f_act - m_tip * v_tip * s)),
 
             # 1-dof control configuration
             # Eq(f_error, f_desired - (f_measure + f_noise)),
@@ -535,11 +537,14 @@ if __name__ == "__main__":
     PlantClass = PlantV3
     PlantClass.derive()
     # plant = PlantClass.plant(m_tip=0.01, K_env=40e3, k_link=60e3, omega_add=-30, m_link=10, b_link=780, f_scale=1e-4)
-    plant = PlantClass.plant(K_env=0.1, K_env_aug=1000, m_tip=1)
-    Ss.plot_step_responses(plant, 1, PlantClass.input_descriptions, PlantClass.output_descriptions)
+    plant = PlantClass.plant(K_env=0, K_env_aug=2000, m_tip=0.08)
+    # Ss.plot_step_responses(plant, 1, PlantClass.input_descriptions, PlantClass.output_descriptions)
+
     Ss.plot_freq_response(plant, np.logspace(-3, 2.58, 500), PlantClass.input_descriptions, PlantClass.output_descriptions, xlog=True, ylog=True)
 
-    # import IPython
-    # if IPython.get_ipython() is None:
-    #     IPython.embed()
+    # Ss.plot_phase_response(plant, np.logspace(-3, 2.58, 500), PlantClass.input_descriptions, PlantClass.output_descriptions, xlog=True, ylog=False)
+
+    import IPython
+    if IPython.get_ipython() is None:
+        IPython.embed()
 
