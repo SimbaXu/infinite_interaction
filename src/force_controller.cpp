@@ -618,9 +618,9 @@ public:
                 // publish time discrepancy
                 if (cy_idx % 125 == 0){
                     RTUtils::diff_timespec(diff_nsec, slp_dline_spec, wake_spec);
-                    ROS_DEBUG_STREAM("wake - deadline-to-send: " << diff_nsec << " nsec (this value should be very small, ideally less than 1e4)");
+                    ROS_DEBUG_STREAM("before-sending - deadline-to-send: " << diff_nsec << " nsec (ideally less than 10000 ns)");
                     RTUtils::diff_timespec(diff_nsec, slp_dline_spec, sent_spec);
-                    ROS_DEBUG_STREAM("sent - deadline-to-send: " << diff_nsec << " nsec (this value should be small, ideally less than 1e5)");
+                    ROS_DEBUG_STREAM("finish-sending - deadline-to-send: " << diff_nsec << " nsec (ideally less than 2ms=2000000ns)");
                     ROS_DEBUG_STREAM("current state: " << control_state_id_);
                 }
             }
