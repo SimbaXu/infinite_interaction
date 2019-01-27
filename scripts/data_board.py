@@ -48,6 +48,10 @@ if __name__ == '__main__':
     number_store_points = rospy.get_param("/data_board/number_store_points")
     handles = rospy.get_param("/data_board/handles")
     yranges = rospy.get_param("/data_board/axes_configs/yranges")
+    try:
+        grid_on = rospy.get_param("/data_board/axes_configs/grid_on")
+    except KeyError:
+        grid_on = []
 
     # subscribe to topic and do stuff
     data_collector_dict = {}
@@ -71,6 +75,9 @@ if __name__ == '__main__':
 
     for axes_index, (ymin, ymax) in yranges:
         axs[axes_index].set_ylim(ymin, ymax)
+
+    for axes_index in grid_on:
+        axs[axes_index].grid()
 
     handles_latest_total_indices = [-1] * len(handles)
 
