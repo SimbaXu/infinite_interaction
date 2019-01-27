@@ -12,6 +12,8 @@
   <rosparam command="load" file="$(find infinite_interaction)/config/teaching_experiment/admittance_v1.yaml"/> 
 
   <!-- Q-synthesis controller profiles -->
+  <rosparam command="load" file="$(find infinite_interaction)/config/teaching_experiment/Q_syn_admittance_v0.yaml"/> 
+  <rosparam command="load" file="$(find infinite_interaction)/config/teaching_experiment/Q_syn_admittance_v1.yaml"/> 
 
   <!-- logging configuration -->
   <env name="ROSCONSOLE_CONFIG_FILE" value="$(find infinite_interaction)/config/rosconsole.conf"/>
@@ -21,6 +23,6 @@
 	args="--address 192.168.0.22 --rate 250"/>
   <node name="admittance_controller" pkg="infinite_interaction" type="hybrid_force_controller" output="screen"/>
 
-  <node name="data_board" pkg="infinite_interaction" type="data_board.py"/>
+  <!-- <node name="data_board" pkg="infinite_interaction" type="data_board.py"/> -->
 
 </launch>
