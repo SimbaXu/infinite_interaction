@@ -8,7 +8,12 @@ admittance_controller:
 
   X_active_controller: admittance_v1
   Y_active_controller: admittance_v1
-  Z_active_controller: admittance_v1
+  # Z_active_controller: admittance_v1
+
+  # X_active_controller: Q_syn
+  # Y_active_controller: Q_syn
+  Z_active_controller: Q_syn
+
 
   # misc parameters
   debug: true
@@ -34,6 +39,7 @@ admittance_controller:
     type: Q_synthesis
     profiles:
       - /controllers/Q_syn_admittance_v0
+      # - /controllers/Q_syn_admittance_v1
 
   # m=2.5,b=12,k=0
   admittance_v0:
