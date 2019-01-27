@@ -1,0 +1,24 @@
+data_board:
+  layout: [1, 2]
+  number_store_points: 12500
+  time_window_sec: 120
+
+  handles:
+    - [0, "/debugger/cartesian_force_measurement", 0]
+    - [0, "/debugger/cartesian_force_measurement", 1]
+    - [0, "/debugger/cartesian_force_measurement", 2]
+
+    - [1, "/debugger/cartesian_command", 0]
+    - [1, "/debugger/cartesian_command", 1]
+    - [1, "/debugger/cartesian_command", 2]
+
+    - [1, "/debugger/cartesian_position_measurement", 0]
+    - [1, "/debugger/cartesian_position_measurement", 1]
+    - [1, "/debugger/cartesian_position_measurement", 2]
+  
+  axes_configs:
+    sharex: True
+    yranges:
+      - [0, [-40, 40]]
+      - [1, [-0.3, 0.3]]
+

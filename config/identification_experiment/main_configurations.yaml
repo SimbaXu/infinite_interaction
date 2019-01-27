@@ -1,0 +1,31 @@
+identification_node:
+
+  # set admittance control
+  X_active_controller: position_feedthrough
+  Y_active_controller: position_feedthrough
+  Z_active_controller: position_feedthrough
+
+  # misc parameters
+  debug: true
+  viewer: false
+
+  # system setup
+  scene_path: robots/denso_ft_sensor_gripper.robot.xml
+  robot_name: denso_ft_sensor_gripper
+  manip_frame: gripper
+  ftsensor_frame: ft_sensor
+  robot_control_method: direct
+  slave_mode: 0  # 1 for J1, 0 for J0 (RTOS required)
+
+  initial_setpoints: [0.0, 0.0, 0.0]
+  safety_force_threshold: 50.0
+
+  # inverse kinematic parameters
+  gam: 1.0e-5
+  gam2: 0.0e-5
+
+  # Linear controller definitions;
+  position_feedthrough:
+    type: transfer_matrix
+    profiles:
+      - /profiles/feedthrough

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- This yaml file is the central parameter store. -->
+  <rosparam command="load" file="$(find infinite_interaction)/config/identification_experiment/main_configurations.yaml"/> 
+  <rosparam command="load" file="$(find infinite_interaction)/config/identification_experiment/data_board_configurations.yaml"/> 
+
+  <!-- Standard profiles -->
+  <rosparam command="load" file="$(find infinite_interaction)/config/sliding_experiment/standard_profiles.yaml"/> 
+
+  <!-- Q-synthesis controller profiles -->
+
+  <!-- logging configuration -->
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find infinite_interaction)/config/rosconsole.conf"/>
+
+  <remap from="netft_data" to="netft/raw"/>
+  <node name="netft_node" pkg="netft_control" type="netft_node"
+	args="--address 192.168.0.22 --rate 250"/>
+  <node name="identification_node" pkg="infinite_interaction" type="hybrid_force_controller" output="screen"/>
+  <!-- <node name="data_board" pkg="infinite_interaction" type="data_board.py"/> -->
+</launch>
