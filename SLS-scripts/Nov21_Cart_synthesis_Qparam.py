@@ -60,14 +60,14 @@ def synthesize_teaching_controller_general_configuration():
     response_time = 0.8
 
     # desired response from w3 to z1
-    plant_nominal = pool.PlantV3.plant(K_env=40, m_tip=0.07, K_env_aug=1000)
+    plant_nominal = pool.PlantV3.plant(K_env=40, m_tip=0.01, K_env_aug=1000)
 
     def xcmd_xenv_upper_bound(omegas):
         s = co.tf([1, 0], [1])
         return (1 / (1 + 0.08 * s) ** 2).freqresp(omegas)[0][0, 0]
 
-    # fmeasure_xenv_desired_tf = co.c2d(co.tf([m_desired * k_env_nom, b_desired * k_env_nom, 0], [m_desired, b_desired, 0 + k_env_nom]), Ts)
-    fmeasure_xenv_desired_tf = co.c2d(40 * response_time * s / (1 + response_time * s), Ts)
+    fmeasure_xenv_desired_tf = co.c2d(co.tf([m_desired * k_env_nom, b_desired * k_env_nom, 0], [m_desired, b_desired, 0 + k_env_nom]), Ts)
+    # fmeasure_xenv_desired_tf = co.c2d(40 * response_time * s / (1 + response_time * s), Ts)
     xcmd_xenv_desired_tf = co.c2d(1 / (1 + response_time * s), Ts)
 
     design_dict = {
@@ -80,8 +80,8 @@ def synthesize_teaching_controller_general_configuration():
         # different objective
         'shape-time-delay': 3,  # number of delayed time step
         'shape-time': [
-            # ['step', (0, 1), fmeasure_xenv_desired_tf, 1]
-            ['step', (1, 1), xcmd_xenv_desired_tf, 1]
+            ['step', (0, 1), fmeasure_xenv_desired_tf, 1]
+            # ['step', (1, 1), xcmd_xenv_desired_tf, 1]
         ],
         'shape-freq': [
             # [(0, 1), fmeasure_xenv_desired_tf, 'inf', 1.0]

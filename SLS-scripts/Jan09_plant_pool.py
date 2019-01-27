@@ -45,10 +45,11 @@ class PlantV3:
         # constant transfer function
         z = co.tf([1, 0], [1], Ts)
         s = co.tf([1, 0], [1])
-        R1 = 1 / (1 + tau_R1 * s) / (1 + 0.01 * s)   # robot first-order response
-        # R1 = 1 / (1 + tau_R1 * s)   # robot first-order response
+        # R1 = 1 / (1 + tau_R1 * s) / (1 + 0.01 * s)   # robot first-order response
+        R1 = 1 / (1 + tau_R1 * s)   # robot first-order response
+        m_tip = m_tip / (1 + 0.001 * s) ** 2
 
-        with open(PlantV1.gen_exp_file, 'r') as f:
+        with open(PlantV3.gen_exp_file, 'r') as f:
             expr_string = f.read()
         exec(expr_string)
         P = Ss.tf_blocks(locals()["Plist"])
@@ -73,8 +74,8 @@ class PlantV3:
         s, Ts = sym.symbols('s Ts')
 
         # symbols_input = [f_desired, x_env, f_noise, f_robust, w_add, u]
-        symbols_input = [sym.symbols(_x) for _x in PlantV2.input_descriptions]
-        symbols_output = [sym.symbols(_x) for _x in PlantV2.output_descriptions]
+        symbols_input = [sym.symbols(_x) for _x in PlantV3.input_descriptions]
+        symbols_output = [sym.symbols(_x) for _x in PlantV3.output_descriptions]
 
         # dynamic equation
         Eq = sym.Eq
@@ -91,7 +92,7 @@ class PlantV3:
             Eq(x_robot, x_tip),
 
             # force measurement
-            Eq(f_measure, (f_act - m_tip * v_tip * s) * sym.exp(- Ts)),
+            Eq(f_measure, (f_act - m_tip * v_tip * s) * sym.exp(-Ts)),
 
             # 1-dof control configuration
             # Eq(f_error, f_desired - (f_measure + f_noise)),
@@ -143,7 +144,7 @@ class PlantV3:
 
         # print symbolic transfer matrix as string.
         plant_string_expr = print_symmatrix_as_list(plant)
-        with open(PlantV1.gen_exp_file, 'w') as f:
+        with open(PlantV3.gen_exp_file, 'w') as f:
             f.write(plant_string_expr)
         print("Obtain the following string expression for this plant\n----------------------------------------\n\n")
         print(plant_string_expr)
@@ -534,7 +535,7 @@ if __name__ == "__main__":
     PlantClass = PlantV3
     PlantClass.derive()
     # plant = PlantClass.plant(m_tip=0.01, K_env=40e3, k_link=60e3, omega_add=-30, m_link=10, b_link=780, f_scale=1e-4)
-    plant = PlantClass.plant(K_env=50, K_env_aug=1000, m_tip=0.07)
+    plant = PlantClass.plant(K_env=0.1, K_env_aug=1000, m_tip=1)
     Ss.plot_step_responses(plant, 1, PlantClass.input_descriptions, PlantClass.output_descriptions)
     Ss.plot_freq_response(plant, np.logspace(-3, 2.58, 500), PlantClass.input_descriptions, PlantClass.output_descriptions, xlog=True, ylog=True)
 
