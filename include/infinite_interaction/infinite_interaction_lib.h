@@ -192,6 +192,16 @@ public:
       * */
      DoubleVector compute(const DoubleVector & pos_n);
      void set_state(const DoubleVector & jnt_pos_n);
+     void get_initial_pose(DoubleVector & initial_pose) {
+         initial_pose.resize(7);
+         initial_pose[0] = _pos_init.x;
+         initial_pose[1] = _pos_init.y;
+         initial_pose[2] = _pos_init.z;
+         initial_pose[3] = _quat_init.x;
+         initial_pose[4] = _quat_init.y;
+         initial_pose[5] = _quat_init.z;
+         initial_pose[6] = _quat_init.w;
+     }
  };
 
 
