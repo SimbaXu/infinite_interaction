@@ -302,7 +302,7 @@ class CartesianForceController {
     double force_deadzone_; // if f_measure in [f_desired - f_deadzone, f_desired + f_deadzone], f_error = 0
     double joint_command_deadzone_;
 
-    std::shared_ptr<SignalBlock> position2joint_map_ptr_;  // cartesian position command to joint
+    std::shared_ptr<InfInteraction::CartPositionTracker> position2joint_map_ptr_;  // cartesian position command to joint
 
     // variables used in RT loop
     std::vector<double> joint_cmd_;
@@ -469,6 +469,8 @@ public:
         double surface_height = 0;  // estimated surface height at the time of touch down. this value is used during the main control loop.
         double Z_current_output_;  // use to store current command position
         std::vector<double> new_joint_command(6);
+        std::vector<double> initial_pose;
+        position2joint_map_ptr_->get_initial_pose(initial_pose);
 
 
         for(int i=0; i < initial_setpoints_.size(); i++){
@@ -503,9 +505,9 @@ public:
                 boost::recursive_mutex::scoped_lock lock(robot_ptr_->GetEnv()->GetMutex());
                 robot_ptr_->SetActiveDOFValues(joint_measure_);
                 T_world_manip_ = manip_ptr_->GetTransform();
-                cartesian_measurement_[0] = T_world_manip_.trans.x;
-                cartesian_measurement_[1] = T_world_manip_.trans.y;
-                cartesian_measurement_[2] = T_world_manip_.trans.z;
+                cartesian_measurement_[0] = T_world_manip_.trans.x - initial_pose[0];
+                cartesian_measurement_[1] = T_world_manip_.trans.y - initial_pose[1];
+                cartesian_measurement_[2] = T_world_manip_.trans.z - initial_pose[2];
                 cartesian_measurement_[3] = T_world_manip_.rot.x;
                 cartesian_measurement_[4] = T_world_manip_.rot.y;
                 cartesian_measurement_[5] = T_world_manip_.rot.z;
