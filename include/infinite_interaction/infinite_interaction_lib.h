@@ -155,11 +155,11 @@ public:
 
 /*! Cartesian Position Tracker
  *
- * Compute Joint Position Command to track a given position pos[n] while keeping the orientation fixed at the
+ * Compute joint value command to track a given position pos[n] while keeping orientation fixed at the
  * initial value.
  *
- * NOTE: At each iteration, users should call set_state
- * and update jnt_pos_current before calling compute to obtain another joint position.
+ * NOTE: In each iteration, users should call set_state to update the internal joint
+ * values before calling `compute`.
  */
  class CartPositionTracker: public SignalBlock {
      DoubleVector _jnt_pos_current,  /* Current robot joint position */

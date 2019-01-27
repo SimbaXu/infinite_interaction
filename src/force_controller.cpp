@@ -264,6 +264,7 @@ class CartesianForceController {
     std::string debug_ns_ = "/debugger";
     std::shared_ptr<InfInteraction::TopicDebugger> debugger_ptr_;
     int debug_w_id_, debug_y_id_, debug_u_id_, debug_q_id_, debug_q_cmd_id_;
+    int debug_cartesian_position_measurement_id_;
 
     // identificator
     std::string identificator_ns_ = "identificator";
@@ -275,6 +276,7 @@ class CartesianForceController {
     OpenRAVE::EnvironmentBasePtr env_ptr_;
     OpenRAVE::RobotBasePtr robot_ptr_;
     OpenRAVE::RobotBase::ManipulatorPtr manip_ptr_;
+    OpenRAVE::Transform T_world_manip_;
 
     std::shared_ptr<SignalBlock> wrench2force_map_ptr_;  // wrench-to-Cartesian force transform
 
@@ -308,6 +310,7 @@ class CartesianForceController {
     std::vector<double> wrench_measure_;  // wrench measurement
     std::vector<double> force_measure_;  // Cartesian force measurement
     std::vector<double> cartesian_cmd_;
+    std::vector<double> cartesian_measurement_;
 
     int control_state_id_; // state index
 
@@ -332,6 +335,7 @@ public:
      */
     CartesianForceController(ros::NodeHandle nh): nh_(nh), setpoints_(10, 0), cartesian_cmd_(3, 0), joint_cmd_(6, 0), joint_measure_(6, 0),
                                                   force_measure_(3, 0), wrench_measure_(6, 0),
+                                                  cartesian_measurement_(7, 0),
                                                   X_linear_controller_inputs_(2, 0), X_linear_controller_output_(0),
                                                   Y_linear_controller_inputs_(2, 0), Y_linear_controller_output_(0),
                                                   Z_linear_controller_inputs_(2, 0), Z_linear_controller_output_(0),
@@ -428,6 +432,7 @@ public:
         debug_w_id_ = debugger_ptr_->register_multiarray("wrench_measurement"); // meeasured wrench
         debug_y_id_ = debugger_ptr_->register_multiarray("cartesian_force_measurement"); // force_ output
         debug_u_id_ = debugger_ptr_->register_multiarray("cartesian_command"); // position command
+        debug_cartesian_position_measurement_id_ = debugger_ptr_->register_multiarray("cartesian_position_measurement");
         debug_q_id_ = debugger_ptr_->register_multiarray("joint_measure"); // joint command
         debug_q_cmd_id_ = debugger_ptr_->register_multiarray("joint_command"); // joint command
     }
@@ -438,6 +443,7 @@ public:
         debugger_ptr_->publish_multiarray(debug_u_id_, cartesian_cmd_);
         debugger_ptr_->publish_multiarray(debug_q_id_, joint_measure_);
         debugger_ptr_->publish_multiarray(debug_q_cmd_id_, joint_cmd_);
+        debugger_ptr_->publish_multiarray(debug_cartesian_position_measurement_id_, cartesian_measurement_);
     }
 
     bool start_force_control(){
@@ -491,6 +497,20 @@ public:
 
             ft_hw_ptr_->get_latest_wrench(wrench_measure_);
             robot_hw_ptr_->get_latest_jnt(joint_measure_);
+
+            // compute current cartesian position
+            {
+                boost::recursive_mutex::scoped_lock lock(robot_ptr_->GetEnv()->GetMutex());
+                robot_ptr_->SetActiveDOFValues(joint_measure_);
+                T_world_manip_ = manip_ptr_->GetTransform();
+                cartesian_measurement_[0] = T_world_manip_.trans.x;
+                cartesian_measurement_[1] = T_world_manip_.trans.y;
+                cartesian_measurement_[2] = T_world_manip_.trans.z;
+                cartesian_measurement_[3] = T_world_manip_.rot.x;
+                cartesian_measurement_[4] = T_world_manip_.rot.y;
+                cartesian_measurement_[5] = T_world_manip_.rot.z;
+                cartesian_measurement_[6] = T_world_manip_.rot.w;
+            }
 
             // transform wrench measurement to Cartesian force
             wrench2force_map_ptr_->set_state(joint_measure_);
@@ -563,7 +583,8 @@ public:
                 ROS_FATAL_STREAM("Encounter illegal/non-action control_state_id_: " << control_state_id_ << ". Shutting down.");
                 ros::shutdown();
             }
-            //publish data for identification
+
+            //publish data for identification (deprecated)
             // a 2-vector which contains the measured vertical force and the measured cartesian command
             identify_data_[0] = force_measure_[2];
             identify_data_[1] = cartesian_cmd_[2];
