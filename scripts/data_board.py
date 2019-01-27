@@ -20,7 +20,7 @@ class DataCollector(object):
         self.data_subscriber = rospy.Subscriber(
             topic_name, Float64MultiArray, self.callback)
 
-        self.data = np.zeros((number_data_points, 6))
+        self.data = np.zeros((number_data_points, 7))
         self.time = np.zeros(number_data_points)
         self.number_data_points = number_data_points
         self.current_index = 0
