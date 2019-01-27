@@ -396,6 +396,7 @@ public:
         if (viewer_on_) boost::thread thviewer(boost::bind(SetViewer, env_ptr_, viewer_name_));  // create viewer
         env_ptr_->Load(scene_file_name_); // load the scene
         robot_ptr_ = env_ptr_->GetRobot(robot_name_);
+        robot_ptr_->SetActiveManipulator(manip_frame_name_);
         manip_ptr_ = robot_ptr_->GetActiveManipulator();
         // set active dofs to [0,..,5]
         robot_ptr_->SetActiveDOFs(std::vector<int> {0, 1, 2, 3, 4, 5});
@@ -512,6 +513,9 @@ public:
                 cartesian_measurement_[4] = T_world_manip_.rot.y;
                 cartesian_measurement_[5] = T_world_manip_.rot.z;
                 cartesian_measurement_[6] = T_world_manip_.rot.w;
+                ROS_DEBUG_STREAM_THROTTLE(1, "Initial pose: " << initial_pose[2] << ", " <<
+                                                                                         "manip.z" << T_world_manip_.trans.z
+                );
             }
 
             // transform wrench measurement to Cartesian force
@@ -559,11 +563,11 @@ public:
                 Z_linear_controller_ptr_->compute(Z_linear_controller_inputs_, Z_linear_controller_output_);
                 if (ABS(Z_linear_controller_output_ - Z_current_output_) < distance_stopband_)
                 {
-                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes very little, setting to unchanged!");
+//                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes very little, setting to unchanged!");
                     Z_linear_controller_output_ = Z_current_output_;
                 }
                 else{
-                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes: " << Z_linear_controller_output_ - Z_current_output_);
+//                    ROS_DEBUG_STREAM_THROTTLE(1, "Commanding distance changes: " << Z_linear_controller_output_ - Z_current_output_);
                 }
 
                 // X-axis linear controller

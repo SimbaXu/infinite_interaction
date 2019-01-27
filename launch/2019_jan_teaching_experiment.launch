@@ -21,6 +21,6 @@
 	args="--address 192.168.0.22 --rate 250"/>
   <node name="admittance_controller" pkg="infinite_interaction" type="hybrid_force_controller" output="screen"/>
 
-  <node name="data_board" pkg="infinite_interaction" type="data_board.py"/>
+  <!-- <node name="data_board" pkg="infinite_interaction" type="data_board.py"/> -->
 
 </launch>
