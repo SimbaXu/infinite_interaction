@@ -25,5 +25,7 @@ data_board:
       - [1, [-0.3, 0.3]]
 
     grid_on: [0, 1]
+
+    sharex: True
       
 
