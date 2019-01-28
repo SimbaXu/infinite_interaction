@@ -21,7 +21,7 @@ def synthesize_teaching_controller_general_configuration():
     s = co.tf([1, 0], [1])
 
     k_env_nom = 20
-    m_desired = 1.
+    m_desired = 1.2
     b_desired = 8
 
     K_env_aug = 1.0
@@ -35,13 +35,13 @@ def synthesize_teaching_controller_general_configuration():
 
     fmeasure_xenv_desired_tf = co.c2d(co.tf([m_desired * k_env_nom, b_desired * k_env_nom, 0], [m_desired, b_desired, 0 + k_env_nom]), Ts)
 
-    f_env_aug_f_robust_tf = Ss.Qsyn.lambda_log_interpolate(
-        [[0.1, 20], [25, 20], [50, 0.05], [100, 0.02]], preview=False)
+    f_env_aug_f_robust_tf = Ss.Qsyn.lambda_log_interpolate([
+        [0.1, 50], [25, 50], [40, 0.2], [100, 0.05]], preview=False)
 
     def f_env_aug_f_robust_shaping_for_human(omegas):
         s = co.tf([1, 0], [1])
         # return np.ones_like(omegas)
-        return 200 * (1 + 0.157 * 1j * omegas)
+        return 400 * (1 + 0.157 * 1j * omegas)
 
     def f_env_aug_f_robust_shaping_for_spring(omegas):
         s = co.tf([1, 0], [1])
@@ -64,7 +64,7 @@ def synthesize_teaching_controller_general_configuration():
 
         'constraint-freq': [
             # [(1, 1), xcmd_xenv_upper_bound, False],
-            ([3, 3], f_env_aug_f_robust_tf, False)
+            ([3, 3, f_env_aug_f_robust_shaping_for_human], f_env_aug_f_robust_tf, False)
         ],
 
         'reg2': 1,
@@ -76,16 +76,17 @@ def synthesize_teaching_controller_general_configuration():
 
         'constraint-nyquist-stability': [
             # shaping for robust stability against human
-            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.0, 0), 0.00, (3, 15)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.0, 0), 0.30, (3, 15)],
             [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.5, 0), 1.57, (15, 220)],
 
-            # shaping for robust stability against spring
-            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.0, 0), 0.00, (3, 25)],
-            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.5, 0), 1.57, (25, 220)],
+            # # shaping for robust stability against spring
+            # [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.0, 0), 0.20, (3, 25)],
+            # [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.5, 0), 1.57, (25, 220)],
+
         ],
 
         'additional-freq-vars': [
-            (3, 3), (1, 1),
+            (3, 3), (1, 1), (1, 3), (2, 3)
         ],
         'additional-time-vars': [
             ["step", (1, 1)],
@@ -108,13 +109,14 @@ def synthesize_teaching_controller_general_configuration():
                 (1, 0, "nyquist", (3, 3, f_env_aug_f_robust_shaping_for_human), omega_interested),
                 (1, 1, "nyquist", (3, 3, f_env_aug_f_robust_shaping_for_spring), omega_interested),
 
-                (2, 1, "bode_mag", (1, 1), omega_interested),
-                (2, 1, "bode_mag", xcmd_xenv_upper_bound),
-                (2, 0, "bode_mag", (3, 3), omega_interested),
-                (2, 0, "bode_mag", f_env_aug_f_robust_tf),
+                (2, 0, "bode_mag", (3, 3, f_env_aug_f_robust_shaping_for_human), omega_interested),
+                (2, 0, "bode_mag", [f_env_aug_f_robust_tf]),
                 
                 # (2, 1, "bode_mag", (1, 1), omega_interested),
-                # (2, 1, "bode_mag", (1, 2), omega_interested),
+                # (2, 1, "bode_mag", xcmd_xenv_upper_bound),
+                (2, 1, "bode_phs", (1, 3), omega_interested),
+                (2, 1, "bode_phs", (2, 3), omega_interested),
+                (2, 1, "bode_phs", (3, 3, f_env_aug_f_robust_shaping_for_human), omega_interested),
             ]
         }
         from importlib import reload; reload(Ss)
@@ -127,7 +129,8 @@ def synthesize_teaching_controller_general_configuration():
         import Jan09_print_controllers as print_controllers
         from importlib import reload
         reload(print_controllers)
-        profile_name = "Q_syn_admittance_v2"
+        # profile_name = "Q_syn_admittance_v2"
+        profile_name = "Q_syn_admittance_v3_Xaxis"
         print_controllers.print_controller(
             profile_name, synthesis_result, scale_output=1, DATA_DIR=DATA_DIR)
 
