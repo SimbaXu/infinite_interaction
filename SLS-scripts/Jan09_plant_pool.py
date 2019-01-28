@@ -122,7 +122,7 @@ class PlantV3:
             if symbol_out not in symbols_input:
                 symbols_to_solve.append(symbol_out)
 
-        assert len(symbols_to_solve) == len(eqs), "Error: The number of equalities and the number of symbols to solve are different."
+        assert len(symbols_to_solve) == len(eqs), "Error: The number of equalities ({:d}) and the number of symbols to solve ({:d}) are different.".format(len(eqs), len(symbols_to_solve))
 
         print("Start solving dynamic equations")
         solve_result = sym.solve(eqs, symbols_to_solve)
@@ -537,7 +537,12 @@ if __name__ == "__main__":
     PlantClass = PlantV3
     PlantClass.derive()
     # plant = PlantClass.plant(m_tip=0.01, K_env=40e3, k_link=60e3, omega_add=-30, m_link=10, b_link=780, f_scale=1e-4)
-    plant = PlantClass.plant(K_env=0, K_env_aug=2000, m_tip=0.08)
+
+    s = co.tf([1, 0], [1])
+    # K_env_aug = 500 * (1 + 0.157 * s)
+    K_env_aug = 500
+    K_env = 50 * (1 + 0.157 * s)
+    plant = PlantClass.plant(K_env=0, K_env_aug=K_env_aug, m_tip=0.08)
     # Ss.plot_step_responses(plant, 1, PlantClass.input_descriptions, PlantClass.output_descriptions)
 
     Ss.plot_freq_response(plant, np.logspace(-3, 2.58, 500), PlantClass.input_descriptions, PlantClass.output_descriptions, xlog=True, ylog=True)

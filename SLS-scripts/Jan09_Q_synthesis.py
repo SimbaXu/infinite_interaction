@@ -173,6 +173,11 @@ def synthesize_controller_general_configuration():
         s = co.tf([1, 0], [1])
         return 1.1 * (s / (2 + s)).freqresp(omegas)[0][0, 0]
 
+    def func_one(omegas):
+        """ Unit function, used in some part of the code.
+        """
+        return np.ones_like(omegas)
+
     design_dict = {
         'ny': 2,
         'nu': 1,
@@ -208,10 +213,10 @@ def synthesize_controller_general_configuration():
         ],
 
         'constraint-nyquist-stability': [
-            [(3, 3), (-0.5, 0), 1.57, (2, 60)],  # distance from (-1, 0): 0.5
+            [(3, 3), func_one, (-0.5, 0), 1.57, (2, 60)],  # distance from (-1, 0): 0.5
             # [(3, 3), (0, 0), 0.643, (8, 35)],  # distance from (-1, 0): 0.6
             # [(3, 3), (0, 0), 0.775, (1, 34)],  # distance from (-1, 0): 0.7
-            [(3, 3), (-0.5, 0), 1.57, (60, 220)]
+            [(3, 3), func_one, (-0.5, 0), 1.57, (60, 220)]
         ],
 
         'additional-time-vars': [
