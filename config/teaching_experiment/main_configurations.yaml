@@ -3,18 +3,21 @@ admittance_controller:
   # set admittance control
 
   # X_active_controller: admittance_v0
-  # Y_active_controller: admittance_v0
-  # Z_active_controller: admittance_v0
+
+  Y_active_controller: admittance_v0
+  Z_active_controller: admittance_v0
 
   # X_active_controller: admittance_v1
+
   # Y_active_controller: admittance_v1
   # Z_active_controller: admittance_v1
 
-  # X_active_controller: Q_syn
-  Y_active_controller: Q_syn
-  Z_active_controller: Q_syn
-
   X_active_controller: position_feedthrough
+
+  # Y_active_controller: Q_syn
+  # Z_active_controller: Q_syn
+
+  # X_active_controller: Q_syn_Xaxis
   # Y_active_controller: position_feedthrough
   # Z_active_controller: position_feedthrough
 
@@ -28,7 +31,7 @@ admittance_controller:
   manip_frame: gripper
   ftsensor_frame: ft_sensor
   robot_control_method: direct
-  slave_mode: 1  # 1 for J1, 0 for J0 (RTOS required)
+  slave_mode: 0  # 1 for J1, 0 for J0 (RTOS required)
 
   initial_setpoints: [0.0, 0.0, 0.0]
   safety_force_threshold: 50.0
@@ -41,17 +44,22 @@ admittance_controller:
   Q_syn:
     type: Q_synthesis
     profiles:
-      - /controllers/Q_syn_admittance_v0
+      # - /controllers/Q_syn_admittance_v0
       # - /controllers/Q_syn_admittance_v1
-      # - /controllers/Q_syn_admittance_v2
+      - /controllers/Q_syn_admittance_v2
 
-  # m=2.5,b=12,k=0
+  Q_syn_Xaxis:
+    type: Q_synthesis
+    profiles:
+      - /controllers/Q_syn_admittance_v3_Xaxis
+
+  # two admittance controllers, see
+  # Jan25_admittance_controller_printer.py for more details.
   admittance_v0:
     type: transfer_matrix
     profiles:
       - /controllers/admittance_v0
 
-  # m=6,b=18,k=0
   admittance_v1:
     type: transfer_matrix
     profiles:
