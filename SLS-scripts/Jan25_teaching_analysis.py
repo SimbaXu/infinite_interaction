@@ -13,17 +13,19 @@ if __name__ == '__main__':
     Ts = 0.008
     s = co.tf([1, 0], [1])
     plants = OrderedDict([
-        ('nominal', mo.PlantV3.plant(K_env=30, m_tip=0.07, K_env_aug=200)),
-        ('freespace', mo.PlantV3.plant(K_env=1e-3, m_tip=0.07)),
-        ('stiffer', mo.PlantV3.plant(m_tip=0.07, K_env=100)),
-        ('stiffest', mo.PlantV3.plant(m_tip=0.07, K_env=200)),
-        ('spring', mo.PlantV3.plant(m_tip=0.07, K_env=400)),
+        # ('freespace', mo.PlantV3.plant(K_env=1e-3, m_tip=0.07, K_env_aug=200)),
+        # ('nominal', mo.PlantV3.plant(K_env=30, m_tip=0.08, K_env_aug=1000 * (1 + 0.157 * s) / (1 + 0.01 * s))),
+        ('nominal', mo.PlantV3.plant(K_env=30, m_tip=0.08, K_env_aug=500)),
+        # ('stiffer', mo.PlantV3.plant(m_tip=0.07, K_env=100)),
+        # ('stiffest', mo.PlantV3.plant(m_tip=0.07, K_env=200)),
+        # ('spring', mo.PlantV3.plant(m_tip=0.07, K_env=400)),
     ])
 
     # controller descriptions:
-    c0 = mo.Controllers.Admittance(m=2.5, b=12, k=0)
+    # c0 = mo.Controllers.Admittance(m=2.5, b=12, k=0)
     # c0 = mo.Controllers.Admittance(m=6.0, b=18, k=0)
-    # c0 = mo.Controllers.Qsyn(filename="Nov21_synthesize_teaching_controller_general_configuration.npz")
+    c0 = mo.Controllers.Qsyn(filename="Nov21_synthesize_teaching_controller_general_configuration.npz")
+    # c0 = mo.Controllers.Qsyn(filename="Nov21_synthesize_teaching_controller_old.npz")
 
     # analysis mode, nothing special, just step output and Nyquist to check the condition of robust stability.
     omega_interested = [1, 5, 10, 20, 40, 80, 100, 200]
@@ -40,6 +42,6 @@ if __name__ == '__main__':
     }
     for plant_key in plants:
         Ss.analysis(plants[plant_key], c0, analysis_dict,
-                    input_descriptions=mo.PlantV2.input_descriptions,
-                    output_descriptions=mo.PlantV2.output_descriptions,
+                    input_descriptions=mo.PlantV3.input_descriptions,
+                    output_descriptions=mo.PlantV3.output_descriptions,
                     controller_name=plant_key, nb_sim_steps=500)
