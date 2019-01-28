@@ -21,7 +21,7 @@ def synthesize_teaching_controller_general_configuration():
     s = co.tf([1, 0], [1])
 
     k_env_nom = 40
-    m_desired = 1.
+    m_desired = 1.5
     b_desired = 12
 
     K_env_aug = 500
@@ -38,10 +38,15 @@ def synthesize_teaching_controller_general_configuration():
     f_env_aug_f_robust_tf = Ss.Qsyn.lambda_log_interpolate(
         [[0.1, 20], [25, 20], [50, 0.05], [100, 0.02]], preview=False)
 
-    def f_env_aug_f_robust_shaping(omegas):
+    def f_env_aug_f_robust_shaping_for_human(omegas):
         s = co.tf([1, 0], [1])
         # return np.ones_like(omegas)
         return 1 + 0.157 * 1j * omegas
+
+    def f_env_aug_f_robust_shaping_for_spring(omegas):
+        s = co.tf([1, 0], [1])
+        # return np.ones_like(omegas)
+        return np.ones_like(omegas)
 
     design_dict = {
         'ny': 2,
@@ -70,8 +75,12 @@ def synthesize_teaching_controller_general_configuration():
         ],
 
         'constraint-nyquist-stability': [
-            [(3, 3), f_env_aug_f_robust_shaping, (-0.0, 0), 0.00, (3, 25)],  # distance from (-1, 0): 0.5
-            [(3, 3), f_env_aug_f_robust_shaping, (-0.5, 0), 1.57, (25, 220)]
+            # shaping for robust stability against human
+            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.0, 0), 0.00, (3, 12)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.5, 0), 1.57, (12, 220)],
+
+            # shaping for robust stability against spring
+            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.0, 0), 0.00, (3, 20)],
         ],
 
         'additional-freq-vars': [
@@ -95,7 +104,8 @@ def synthesize_teaching_controller_general_configuration():
                 (0, 1, "step", (0, 1)),
                 (0, 1, "step", fmeasure_xenv_desired_tf),
                 (0, 0, "step", (1, 1)),
-                (1, 0, "nyquist", (3, 3, f_env_aug_f_robust_shaping), omega_interested),
+                (1, 0, "nyquist", (3, 3, f_env_aug_f_robust_shaping_for_human), omega_interested),
+                (1, 1, "nyquist", (3, 3, f_env_aug_f_robust_shaping_for_spring), omega_interested),
 
                 (2, 1, "bode_mag", (1, 1), omega_interested),
                 (2, 1, "bode_mag", xcmd_xenv_upper_bound),
@@ -116,8 +126,9 @@ def synthesize_teaching_controller_general_configuration():
         import Jan09_print_controllers as print_controllers
         from importlib import reload
         reload(print_controllers)
+        profile_name = "Q_syn_admittance_v2"
         print_controllers.print_controller(
-            "Q_syn_admittance_v0", synthesis_result, scale_output=1, DATA_DIR=DATA_DIR)
+            profile_name, synthesis_result, scale_output=1, DATA_DIR=DATA_DIR)
 
     if input("Convert controller to state-space and save for later analysis?") == "y":
         K_Qparam_ss = Ss.Qsyn.form_Q_feedback_controller_ss(

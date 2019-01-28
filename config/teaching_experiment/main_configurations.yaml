@@ -25,7 +25,7 @@ admittance_controller:
   manip_frame: gripper
   ftsensor_frame: ft_sensor
   robot_control_method: direct
-  slave_mode: 0  # 1 for J1, 0 for J0 (RTOS required)
+  slave_mode: 1  # 1 for J1, 0 for J0 (RTOS required)
 
   initial_setpoints: [0.0, 0.0, 0.0]
   safety_force_threshold: 50.0
@@ -40,6 +40,7 @@ admittance_controller:
     profiles:
       - /controllers/Q_syn_admittance_v0
       # - /controllers/Q_syn_admittance_v1
+      # - /controllers/Q_syn_admittance_v2
 
   # m=2.5,b=12,k=0
   admittance_v0:
