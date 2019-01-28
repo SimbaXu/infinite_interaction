@@ -20,14 +20,14 @@ def synthesize_teaching_controller_general_configuration():
     Ts = 0.008  # sampling internval
     s = co.tf([1, 0], [1])
 
-    k_env_nom = 40
-    m_desired = 1.5
-    b_desired = 12
+    k_env_nom = 20
+    m_desired = 1.
+    b_desired = 8
 
-    K_env_aug = 500
+    K_env_aug = 1.0
 
     # desired response from w3 to z1
-    plant_nominal = pool.PlantV3.plant(K_env=40, m_tip=0.08, K_env_aug=K_env_aug)
+    plant_nominal = pool.PlantV3.plant(K_env=20, m_tip=0.08, K_env_aug=K_env_aug)
 
     def xcmd_xenv_upper_bound(omegas):
         s = co.tf([1, 0], [1])
@@ -41,12 +41,12 @@ def synthesize_teaching_controller_general_configuration():
     def f_env_aug_f_robust_shaping_for_human(omegas):
         s = co.tf([1, 0], [1])
         # return np.ones_like(omegas)
-        return 1 + 0.157 * 1j * omegas
+        return 200 * (1 + 0.157 * 1j * omegas)
 
     def f_env_aug_f_robust_shaping_for_spring(omegas):
         s = co.tf([1, 0], [1])
         # return np.ones_like(omegas)
-        return np.ones_like(omegas)
+        return 800 * (1 + 0.05 * 1j * omegas)
 
     design_dict = {
         'ny': 2,
@@ -76,11 +76,12 @@ def synthesize_teaching_controller_general_configuration():
 
         'constraint-nyquist-stability': [
             # shaping for robust stability against human
-            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.0, 0), 0.00, (3, 12)],
-            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.5, 0), 1.57, (12, 220)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.0, 0), 0.00, (3, 15)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_human, (-0.5, 0), 1.57, (15, 220)],
 
             # shaping for robust stability against spring
-            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.0, 0), 0.00, (3, 20)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.0, 0), 0.00, (3, 25)],
+            [(3, 3), f_env_aug_f_robust_shaping_for_spring, (-0.5, 0), 1.57, (25, 220)],
         ],
 
         'additional-freq-vars': [
