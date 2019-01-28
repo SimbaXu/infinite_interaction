@@ -6,14 +6,17 @@ admittance_controller:
   # Y_active_controller: admittance_v0
   # Z_active_controller: admittance_v0
 
-  X_active_controller: admittance_v1
-  Y_active_controller: admittance_v1
+  # X_active_controller: admittance_v1
+  # Y_active_controller: admittance_v1
   # Z_active_controller: admittance_v1
 
   # X_active_controller: Q_syn
-  # Y_active_controller: Q_syn
+  Y_active_controller: Q_syn
   Z_active_controller: Q_syn
 
+  X_active_controller: position_feedthrough
+  # Y_active_controller: position_feedthrough
+  # Z_active_controller: position_feedthrough
 
   # misc parameters
   debug: true
@@ -54,3 +57,7 @@ admittance_controller:
     profiles:
       - /controllers/admittance_v1
 
+  position_feedthrough:
+    type: transfer_matrix
+    profiles:
+      - /profiles/feedthrough
