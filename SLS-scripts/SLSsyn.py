@@ -804,7 +804,7 @@ class Qsyn:
                 imp_desired = out[1][0, :]
                 imp_desired[specs['shape-time-delay']:] = (
                     imp_desired[:specs['Nsteps'] - specs['shape-time-delay']])
-                imp_desired[:specs['shape-time-delay']] = 0
+                imp_desired[:specs['shape-time-delay']] = imp_desired[specs['shape-time-delay']]
                 all_costs['shape-time'].append(obj_weight * cvx.norm(imp_var - imp_desired))
 
                 # bookkeeping
@@ -873,10 +873,14 @@ class Qsyn:
 
         # constraint on the nyquist plot
         if 'constraint-nyquist-stability' in specs:
-            # format: (io_idx), gain_margin, phase_margin, omega_threshold
-            for io_idx, pivot_margin, phase_margin, (omega_low, omega_high) in specs['constraint-nyquist-stability']:
+            # format: (io_idx), func, gain_margin, phase_margin, omega_threshold
+            # Description: H_io_idx(freqs) * func(freqs) satisfies the Nyquist stability condition.
+            for io_idx, func, pivot_margin, phase_margin, (omega_low, omega_high) in specs['constraint-nyquist-stability']:
                 freqs_threshold = freqs[np.where((freqs > omega_low) * (freqs < omega_high))]
-                freqresp_term, freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
+                # freqresp_term, freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
+                freqresp = Qsyn.obtain_freq_var(weight, io_idx, freqs_threshold, Pzw, Pzu, Pyw, return_coefficient_matrix=False)
+                freqresp_shaping = func(freqs_threshold)
+                freqresp = cvx.multiply(freqresp, freqresp_shaping)
 
                 # MATH: This short write-up establishes notations and symbols. Let p be a point
                 # in the complex plane, let pi be the pivot point (- gain_margin, 0). Let n be the normal
@@ -896,8 +900,7 @@ class Qsyn:
                 normal_y = - np.cos(phase_margin)
 
                 constraints.append(
-                    normal_x * freqresp_term.real + normal_y * freqresp_term.imag +
-                    (normal_x * freqresp_coefficient_matrix.real + normal_y * freqresp_coefficient_matrix.imag) * weight
+                    normal_x * cvx.real(freqresp) + normal_y * cvx.imag(freqresp)
                     >= normal_x * pivot_margin[0] + normal_y * pivot_margin[1])
 
         # passivity
@@ -1019,8 +1022,9 @@ class Qsyn:
             elif plot_type == 'nyquist':
                 # format: i, j, 'nyquist', (out_idx, in_idx), (w0, w1, w3)
                 # The last elements are [these are interested frequencies]
-                output_idx, input_idx = entry[3]
+                output_idx, input_idx, func = entry[3]
                 H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                H_ij = func(freqs) * H_ij
                 axs[ax_i, ax_j].plot(H_ij.real, H_ij.imag, '-x',
                                label='H {:},{:}'.format(
                                    output_descriptions[output_idx], input_descriptions[input_idx]
