@@ -845,31 +845,19 @@ class Qsyn:
             # Below I implement a simple scaling strategy, in which I scale each row of A
             # so that the corresponding element of b is 1.
             for io_idx, func, approx_linear in specs['constraint-freq']:
-                freqresp_term, freqresp_coefficient_matrix = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=True)
+                if len(io_idx) == 2:
+                    freqresp_var = Qsyn.obtain_freq_var(weight, io_idx, freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=False)
+                else:
+                    freqresp_var = Qsyn.obtain_freq_var(weight, io_idx[:2], freqs, Pzw, Pzu, Pyw, return_coefficient_matrix=False)
+                    freqresp_var = cvx.multiply(freqresp_var, io_idx[2](freqs))
+
                 # obtain magnitude upper-bound
                 if type(func) == co.TransferFunction:
                     mag_upbnd = func.freqresp(freqs)[0][0, 0]
-                    constraints.append(cvx.abs(
-                        freqresp_term + freqresp_coefficient_matrix * weight) <= mag_upbnd)
+                    constraints.append(cvx.abs(freqresp_var) <= mag_upbnd)
                 else:
-                    try:
-                        centers, mag_upbnd = func(freqs)
-                        scale_matrix = np.diag(mag_upbnd**(-1))
-                        # TODO: fix the below
-                        constraints.append(
-                            cvx.abs(np.dot(scale_matrix, freqresp_coefficient_matrix) * weight - np.dot(scale_matrix, centers)) <= 1)
-                    except ValueError:
-                        mag_upbnd = func(freqs)
-                        if approx_linear:  # box constraint
-                            # TODO: fix the below
-                            constraints.append(freqresp_coefficient_matrix.real * weight <= mag_upbnd)
-                            constraints.append(freqresp_coefficient_matrix.real * weight >= -mag_upbnd)
-
-                            constraints.append(freqresp_coefficient_matrix.imag * weight <= mag_upbnd)
-                            constraints.append(freqresp_coefficient_matrix.imag * weight >= -mag_upbnd)
-                        else:
-                            constraints.append(cvx.abs(
-                                freqresp_term + freqresp_coefficient_matrix * weight) <= mag_upbnd)
+                    mag_upbnd = func(freqs)
+                    constraints.append(cvx.abs(freqresp_var) <= mag_upbnd)
 
         # constraint on the nyquist plot
         if 'constraint-nyquist-stability' in specs:
@@ -1045,18 +1033,21 @@ class Qsyn:
             elif plot_type == 'bode_mag':
                 # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
                 # or:     i, j, 'bode_mag', function, (w0, w1, w3)
-                try:
+                if len(entry[3]) == 1:
+                    H_ij = entry[3][0](analysis_dict['freqs'])
+                    label = 'func: {:}, {:}'.format( output_descriptions[output_idx], input_descriptions[input_idx])
+                elif len(entry[3]) == 2:
                     output_idx, input_idx = entry[3]
                     H_ij = data['freq-vars'][(output_idx, input_idx)].value
                     label = '{:}, {:}'.format(
                         output_descriptions[output_idx], input_descriptions[input_idx])
-                    axs[ax_i, ax_j].plot(freqs, np.abs(H_ij), label=label)
-                except TypeError:
-                    mag_ij = entry[3](analysis_dict['freqs'])
-                    label = 'func: {:}, {:}'.format(
+                else:
+                    output_idx, input_idx, func = entry[3]
+                    H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                    H_ij = H_ij * func(analysis_dict['freqs'])
+                    label = '{:} * func(freqs), {:}'.format(
                         output_descriptions[output_idx], input_descriptions[input_idx])
-                    axs[ax_i, ax_j].plot(freqs, mag_ij, label=label)
-
+                axs[ax_i, ax_j].plot(freqs, np.abs(H_ij), label=label)
                 axs[ax_i, ax_j].set_xscale('log')
                 axs[ax_i, ax_j].set_yscale('log')
                 axs[ax_i, ax_j].set_xlabel('Freq(rad/s)')
@@ -1064,10 +1055,18 @@ class Qsyn:
 
             elif plot_type == 'bode_phs':
                 # format: i, j, 'bode_mag', (out_idx, in_idx), (w0, w1, w3)
-                output_idx, input_idx = entry[3]
-                H_ij = data['freq-vars'][(output_idx, input_idx)].value
-                label = '{:}, {:}'.format(
-                    output_descriptions[output_idx], input_descriptions[input_idx])
+                if len(entry[3]) == 2:
+                    output_idx, input_idx = entry[3]
+                    H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                    label = '{:}, {:}'.format(
+                        output_descriptions[output_idx], input_descriptions[input_idx])
+                else:
+                    output_idx, input_idx, func = entry[3]
+                    H_ij = data['freq-vars'][(output_idx, input_idx)].value
+                    H_ij = H_ij * func(analysis_dict['freqs'])
+                    label = '{:} * func(freqs), {:}'.format(
+                        output_descriptions[output_idx], input_descriptions[input_idx])
+
                 axs[ax_i, ax_j].plot(freqs, np.angle(H_ij), label=label)
 
                 axs[ax_i, ax_j].set_xscale('log')

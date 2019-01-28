@@ -84,7 +84,7 @@ class PlantV3:
         eqs = []
         eqs.extend([
             # robot dynamics
-            Eq(x_robot, R1 * x_cmd * sym.exp( - 6 * Ts)),
+            Eq(x_robot, R1 * x_cmd * sym.exp(-4 * Ts)),
             Eq(x_cmd, x_cmd_scale * u),
             Eq(u_out, u),
             Eq(v_robot, s * x_robot),
