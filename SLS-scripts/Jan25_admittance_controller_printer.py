@@ -35,15 +35,15 @@ Printing admittance controller
 if __name__ == '__main__':
     # parameters and profile
 
-    # profile_name = 'admittance_v0'
-    # m = 2.5
-    # b = 12
-    # k = 0
-
-    profile_name = 'admittance_v1'
-    m = 6
-    b = 18
+    profile_name = 'admittance_v0'
+    m = 1.5
+    b = 10
     k = 0
+
+    # profile_name = 'admittance_v1'
+    # m = 6
+    # b = 23
+    # k = 0
 
     generate_and_print(profile_name, m, b, k)
 
