@@ -41,6 +41,7 @@ def plot_teaching_experiment_figures():
     fg_position = df_master['topic'] == position_topic
 
     sns.set('paper', style='dark', font_scale=0.9)
+    matplotlib.rcParams['text.usetex'] = True
 
     ###########################################################################
     #                                 Task 1 plot                                 #
